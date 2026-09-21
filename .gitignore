@@ -1,0 +1,33 @@
+# ===== Maven 构建产物 =====
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# ===== IntelliJ IDEA =====
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# ===== Eclipse =====
+.settings/
+.project
+.classpath
+.factorypath
+
+# ===== VS Code =====
+.vscode/
+
+# ===== 日志 =====
+*.log
+logs/
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+
+# ===== 本地私有配置（含密码，绝不提交）=====
+application-local.yml
+application-local.yaml
+application-local.properties
