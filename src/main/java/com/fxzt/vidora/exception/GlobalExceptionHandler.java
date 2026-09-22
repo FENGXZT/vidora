@@ -25,7 +25,6 @@ public class GlobalExceptionHandler {
     /**
      * 处理参数校验异常
      * @param e 方法参数校验异常
-     * @return
      */
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -40,7 +39,6 @@ public class GlobalExceptionHandler {
     /**
      * 处理参数校验异常
      * @param e 请求体参数校验异常
-     * @return
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public Result<String> exceptionHandler(MethodArgumentNotValidException e){

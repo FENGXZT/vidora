@@ -6,9 +6,17 @@ spring:
     url: "jdbc:mysql://localhost:3306/vidora?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
     username: root
     password: 198056
+  data:
+    # redis配置
+    redis:
+      host: localhost       # redis地址
+      port: 6379            # redis端口
+      timeout: 2s            # 命令超时
+      connect-timeout: 1s    # 连接超时
 
 #mybatis配置
 mybatis:
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  mapper-locations: classpath:mapper/*.xml
