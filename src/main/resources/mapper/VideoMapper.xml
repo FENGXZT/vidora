@@ -14,5 +14,6 @@
             <if test="userId != null">v.user_id=#{userId} </if>
             <if test="title != null and title != ''">v.title like CONCAT('%',#{title},'%') </if>
         </where>
+        order by ${orderBy}  ${order}
     </select>
 </mapper>

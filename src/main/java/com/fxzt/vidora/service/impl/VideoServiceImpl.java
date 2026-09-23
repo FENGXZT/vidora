@@ -77,6 +77,11 @@ public class VideoServiceImpl implements VideoService {
         videoPageDTo.setPage(videoPageDTo.getPage()!=null?videoPageDTo.getPage():1);
         // 设置每页最大数量
         videoPageDTo.setPageSize(videoPageDTo.getPageSize()!=null?Math.min(videoPageDTo.getPageSize(), 100):10);
+        //防止非法排序字段，防止非法排序方式
+        List<String> orderbylist = List.of("create_time", "like_count", "view_count", "favorite_count");
+        if(!orderbylist.contains(videoPageDTo.getOrderBy())) videoPageDTo.setOrderBy("create_time");
+        if(!"asc".equals(videoPageDTo.getOrder())&&!"desc".equals(videoPageDTo.getOrder())) videoPageDTo.setOrder("desc");
+
         PageHelper.startPage(videoPageDTo.getPage(), videoPageDTo.getPageSize());
         List<Video> videoList = videoMapper.findAll(videoPageDTo);
         Page<Video> page = (Page<Video>) videoList;

@@ -28,11 +28,11 @@ public class GlobalExceptionHandler {
      */
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public Result<String> exceptionHandler(ConstraintViolationException e){
+    public Result<String> handlerConstraintViolation(ConstraintViolationException e){
         String msg = e.getConstraintViolations().stream()
                 .map(ConstraintViolation::getMessage)
                 .collect(Collectors.joining("; "));
-        log.error("出现异常 {}" , msg);
+        log.warn("出现异常 {}" , msg);
         return Result.error("出现异常： " + msg);
     }
 
@@ -41,17 +41,21 @@ public class GlobalExceptionHandler {
      * @param e 请求体参数校验异常
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public Result<String> exceptionHandler(MethodArgumentNotValidException e){
+    public Result<String> handlerMethodArgumentNotValid(MethodArgumentNotValidException e){
         String msg = e.getBindingResult().getFieldErrors().stream()
                 .map(e1 -> e1.getField() + " " + e1.getDefaultMessage())
                 .collect(Collectors.joining("; "));
-        log.error("出现异常 {}" , msg);
+        log.warn("出现异常 {}" , msg);
         return Result.error("出现异常： " + msg);
     }
 
+    /**
+     * 处理业务异常
+     * @param e 业务异常
+     */
     @ExceptionHandler(BusinessException.class)
-    public Result<String> exceptionHandler(BusinessException e){
-        log.error("出现异常 " , e);
+    public Result<String> handlerBusinessException(BusinessException e){
+        log.warn("出现异常 " , e);
         return Result.error("业务异常： " + e.getMessage());
     }
 }

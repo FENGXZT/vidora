@@ -22,8 +22,8 @@ public class Video {
     private Integer likeCount;         //点赞数
     private Integer viewCount;         //播放数
     private Integer favoriteCount;     //收藏数
-    private LocalDateTime createdate;  //创建时间
-    private LocalDateTime updatedate;  //更新时间
+    private LocalDateTime createTime;  //创建时间
+    private LocalDateTime updateTime;  //更新时间
 
 
     private String nickname;          //发布者昵称
