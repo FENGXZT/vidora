@@ -3,7 +3,9 @@ package com.fxzt.vidora.service.impl;
 import com.fxzt.vidora.exception.BusinessException;
 import com.fxzt.vidora.mapper.UserMapper;
 import com.fxzt.vidora.pojo.entity.User;
+import com.fxzt.vidora.pojo.query.UserLoginDTo;
 import com.fxzt.vidora.service.UserService;
+import com.fxzt.vidora.util.PasswordUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -17,9 +19,23 @@ public class UserServiceImpl implements UserService {
         //判断用户名是否已存在
         if (userMapper.findByUsername(user.getUsername()) !=null ) throw new BusinessException("该用户名已存在");
 
+        //密码加密
+        user.setPassword(PasswordUtil.encrypt(user.getPassword()));
+
         //保存用户信息
         userMapper.insert(user);
 
-        //TODO 密码加密
+    }
+
+    @Override
+    public void login(UserLoginDTo userLoginDTo) {
+        //判断用户名是否存在
+        User user = userMapper.findByUsername(userLoginDTo.getUsername());
+        if (user == null) throw new BusinessException("用户名或密码错误");
+        //判断密码是否正确
+        Boolean isPasswordCorrect = PasswordUtil.match(userLoginDTo.getPassword(), user.getPassword());
+        if (!isPasswordCorrect) throw new BusinessException("用户名或密码错误");
+        //生成token
+
     }
 }

@@ -20,3 +20,8 @@ mybatis:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
   mapper-locations: classpath:mapper/*.xml
+
+#JWT配置
+jwt:
+  secret: thisIsAVeryLongSecretKeyForJwtSigning12345678
+  expiration: 12h          # 令牌有效期
