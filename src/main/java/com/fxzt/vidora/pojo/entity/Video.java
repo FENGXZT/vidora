@@ -1,18 +1,20 @@
 package com.fxzt.vidora.pojo.entity;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+@Builder
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class Video {
 
     private Long id;                  //视频id
-    private String userId;             //发布者ID
+    private Long userId;             //发布者ID
     private String title;               //视频标题
     private String introduction;        //视频简介
     private String coverKey;            //封面图片

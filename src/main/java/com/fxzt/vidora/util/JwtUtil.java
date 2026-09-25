@@ -1,5 +1,6 @@
 package com.fxzt.vidora.util;
 
+import com.fxzt.vidora.exception.UnauthorizedException;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -69,8 +70,14 @@ public class JwtUtil {
         try {
             parseToken(token);
             return true;
-        } catch (ExpiredJwtException e) { log.warn("token 已过期"); return false; }
-        catch (SignatureException e)  { log.warn("token 签名无效"); return false; }
+        } catch (ExpiredJwtException e) {
+            log.warn("token 已过期");
+            throw new UnauthorizedException("token 已过期");
+        }
+        catch (SignatureException e)  {
+            log.warn("token 签名无效");
+            throw new UnauthorizedException("token 签名无效");
+        }
     }
 
     /**

@@ -14,6 +14,9 @@ spring:
       timeout: 2s            # 命令超时
       connect-timeout: 1s    # 连接超时
 
+  config:
+    import: optional:file:.env[.properties]
+
 #mybatis配置
 mybatis:
   configuration:
@@ -23,5 +26,5 @@ mybatis:
 
 #JWT配置
 jwt:
-  secret: thisIsAVeryLongSecretKeyForJwtSigning12345678
+  secret:  ${JWT_SECRET}
   expiration: 12h          # 令牌有效期

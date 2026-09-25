@@ -27,6 +27,9 @@ logs/
 .DS_Store
 Thumbs.db
 
+# 忽略本地环境变量文件
+.env
+
 # ===== 本地私有配置（含密码，绝不提交）=====
 application-local.yml
 application-local.yaml

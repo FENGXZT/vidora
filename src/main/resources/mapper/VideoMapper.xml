@@ -10,10 +10,9 @@
 
     <select id="findAll">
         select v.*,u.nickname from video v left join user u on v.user_id=u.id
-        <where>
-            <if test="userId != null">v.user_id=#{userId} </if>
-            <if test="title != null and title != ''">v.title like CONCAT('%',#{title},'%') </if>
-        </where>
-        order by ${orderBy}  ${order}
+        <if test="keyword != null and keyword !='' ">
+            where v.title like CONCAT('%',#{keyword},'%') or u.nickname like CONCAT('%',#{keyword},'%')
+        </if>
+        order by v.${orderBy}  ${order}, (v.title LIKE CONCAT('%',#{keyword},'%')) DESC
     </select>
 </mapper>

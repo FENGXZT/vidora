@@ -4,7 +4,9 @@ import com.fxzt.vidora.exception.BusinessException;
 import com.fxzt.vidora.mapper.UserMapper;
 import com.fxzt.vidora.pojo.entity.User;
 import com.fxzt.vidora.pojo.query.UserLoginDTo;
+import com.fxzt.vidora.pojo.vo.UserLoginResult;
 import com.fxzt.vidora.service.UserService;
+import com.fxzt.vidora.util.JwtUtil;
 import com.fxzt.vidora.util.PasswordUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,9 @@ import org.springframework.stereotype.Service;
 public class UserServiceImpl implements UserService {
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private JwtUtil jwtUtil;
 
     @Override
     public void register(User user) {
@@ -28,7 +33,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void login(UserLoginDTo userLoginDTo) {
+    public UserLoginResult login(UserLoginDTo userLoginDTo) {
         //判断用户名是否存在
         User user = userMapper.findByUsername(userLoginDTo.getUsername());
         if (user == null) throw new BusinessException("用户名或密码错误");
@@ -36,6 +41,9 @@ public class UserServiceImpl implements UserService {
         Boolean isPasswordCorrect = PasswordUtil.match(userLoginDTo.getPassword(), user.getPassword());
         if (!isPasswordCorrect) throw new BusinessException("用户名或密码错误");
         //生成token
-
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername());
+        //封装用户信息
+        UserLoginResult userLoginResult = new UserLoginResult(token, user.getNickname(), user.getId(), user.getAvatar());
+        return userLoginResult;
     }
 }

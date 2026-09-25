@@ -4,6 +4,7 @@ import com.fxzt.vidora.common.Result;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -57,5 +58,12 @@ public class GlobalExceptionHandler {
     public Result<String> handlerBusinessException(BusinessException e){
         log.warn("出现异常 " , e);
         return Result.error("业务异常： " + e.getMessage());
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<Result<String>> handlerUnauthorized(UnauthorizedException e){
+        log.warn("出现异常 " , e);
+        return ResponseEntity.status(401)
+                .body(Result.error("权限异常： " + e.getMessage()));
     }
 }

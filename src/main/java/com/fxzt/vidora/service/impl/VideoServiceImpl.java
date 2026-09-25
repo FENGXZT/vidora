@@ -2,9 +2,11 @@ package com.fxzt.vidora.service.impl;
 
 import com.fxzt.vidora.mapper.VideoMapper;
 import com.fxzt.vidora.pojo.entity.Video;
+import com.fxzt.vidora.pojo.query.VideoCreateDTo;
 import com.fxzt.vidora.pojo.query.VideoPageDTo;
 import com.fxzt.vidora.pojo.vo.PageResult;
 import com.fxzt.vidora.service.VideoService;
+import com.fxzt.vidora.util.UserContextUtil;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.lettuce.core.RedisCommandTimeoutException;
@@ -14,10 +16,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -33,7 +35,16 @@ public class VideoServiceImpl implements VideoService {
 
 
     @Override
-    public void addVideo(Video video) {
+    public void addVideo(VideoCreateDTo videoCreateDTo ) {
+        Video video = Video.builder()
+                        .videoKey(videoCreateDTo.getVideoKey())
+                        .coverKey(videoCreateDTo.getCoverKey())
+                        .title(videoCreateDTo.getTitle())
+                        .introduction(videoCreateDTo.getIntroduction())
+                        .duration(videoCreateDTo.getDuration())
+                        .status(2)
+                        .userId((Long) UserContextUtil.get().get("id"))
+                        .build();
         videoMapper.addVideo(video);
     }
 
