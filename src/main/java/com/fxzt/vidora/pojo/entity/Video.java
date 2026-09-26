@@ -29,4 +29,5 @@ public class Video {
 
 
     private String nickname;          //发布者昵称
+    private String avatarKey;         //发布者头像
 }

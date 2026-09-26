@@ -4,8 +4,8 @@ import com.fxzt.vidora.pojo.entity.Video;
 import com.fxzt.vidora.pojo.query.VideoCreateDTo;
 import com.fxzt.vidora.pojo.query.VideoPageDTo;
 import com.fxzt.vidora.pojo.vo.PageResult;
-
-import java.util.List;
+import com.fxzt.vidora.pojo.vo.VideoListItem;
+import com.fxzt.vidora.pojo.vo.VideoVo;
 
 public interface VideoService {
     /**
@@ -16,10 +16,10 @@ public interface VideoService {
     /**
      * 根据id获取视频
      */
-    Video getVideoById(Long id);
+    VideoVo getVideoById(Long id);
 
     /**
      * 分页获取视频列表
      */
-    PageResult<Video> pageVideo(VideoPageDTo videoPageDTo);
+    PageResult<VideoListItem> pageVideo(VideoPageDTo videoPageDTo);
 }

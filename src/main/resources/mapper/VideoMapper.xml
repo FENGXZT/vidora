@@ -3,16 +3,28 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.fxzt.vidora.mapper.VideoMapper">
+
     <insert id="addVideo">
         insert into video (user_id, title, introduction, cover_key, video_key, duration, status)
         values (#{userId}, #{title}, #{introduction}, #{coverKey}, #{videoKey}, #{duration}, #{status})
     </insert>
 
-    <select id="findAll">
-        select v.*,u.nickname from video v left join user u on v.user_id=u.id
+    <select id="getVideoById">
+        select v.*, u.nickname, u.avatar_key from video v left join user u on v.user_id=u.id
+        where v.id=#{id}
+    </select>
+
+
+    <select id="findList">
+        select v.id, v.title, v.duration, v.cover_key, v.create_time, v.view_count, u.nickname
+        from video v left join user u on v.user_id=u.id
         <if test="keyword != null and keyword !='' ">
             where v.title like CONCAT('%',#{keyword},'%') or u.nickname like CONCAT('%',#{keyword},'%')
         </if>
-        order by v.${orderBy}  ${order}, (v.title LIKE CONCAT('%',#{keyword},'%')) DESC
+        and v.status = 2
+        order by v.${orderBy}  ${order}
+        <if test="keyword != null and keyword !='' ">
+            , (v.title LIKE CONCAT('%',#{keyword},'%')) DESC
+        </if>
     </select>
 </mapper>

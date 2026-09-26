@@ -23,7 +23,6 @@ public class LoginInterceptor implements HandlerInterceptor {
         // 预处理逻辑
         String token = request.getHeader("token");
         if (token == null) throw new UnauthorizedException("未登录");
-        jwtUtil.validateToken(token);
         Claims value = jwtUtil.getPayload(token);
         UserContextUtil.set(value);
         return true;

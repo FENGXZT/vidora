@@ -1,6 +1,7 @@
 package com.fxzt.vidora.mapper;
 
 import com.fxzt.vidora.pojo.entity.User;
+import com.fxzt.vidora.pojo.query.UserRegisterDto;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
@@ -18,5 +19,5 @@ public interface UserMapper {
      * 插入用户
      * @param user 用户
      */
-    void insert(User user);
+    void insert(UserRegisterDto user);
 }

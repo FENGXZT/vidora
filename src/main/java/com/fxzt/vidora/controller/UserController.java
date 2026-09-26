@@ -3,6 +3,7 @@ package com.fxzt.vidora.controller;
 import com.fxzt.vidora.common.Result;
 import com.fxzt.vidora.pojo.entity.User;
 import com.fxzt.vidora.pojo.query.UserLoginDTo;
+import com.fxzt.vidora.pojo.query.UserRegisterDto;
 import com.fxzt.vidora.pojo.vo.UserLoginResult;
 import com.fxzt.vidora.service.UserService;
 import jakarta.validation.Valid;
@@ -25,9 +26,9 @@ public class UserController {
      * 注册
      */
     @PostMapping("/register")
-    public Result<Void> register(@Valid @RequestBody User user){
-        log.info("注册用户，用户信息{}", user.getUsername());
-        userService.register(user);
+    public Result<Void> register(@Valid @RequestBody UserRegisterDto userRegisterDto){
+        log.info("注册用户，用户信息{}", userRegisterDto.getUsername());
+        userService.register(userRegisterDto);
         return Result.success();
     }
 

@@ -34,7 +34,7 @@ class VidoraServerApplicationTests {
     @Test
     void testValidateToken() {
         String token = jwtUtil.generateToken(2L, "test");
-        assertTrue(jwtUtil.validateToken(token));
+        assertDoesNotThrow(() -> jwtUtil.validateToken(token));
         log.info(token);
     }
 
@@ -54,7 +54,7 @@ class VidoraServerApplicationTests {
     @Test
     void testParseTokenError() {
         String token = jwtUtil.generateToken(3L, "test");
-        assertNotNull(jwtUtil.getPayload(token + "1"));
+        assertThrows(Exception.class, () -> jwtUtil.getPayload(token + "1"));
         log.info(token);
     }
 

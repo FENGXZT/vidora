@@ -1,9 +1,9 @@
 package com.fxzt.vidora.mapper;
 
 import com.fxzt.vidora.pojo.entity.Video;
+import com.fxzt.vidora.pojo.query.VideoCacheDto;
 import com.fxzt.vidora.pojo.query.VideoPageDTo;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -17,11 +17,10 @@ public interface VideoMapper {
     /**
      * 根据id获取视频
      */
-    @Select("select * from video where id = #{id}")
     Video getVideoById(Long id);
 
     /**
      * 分页查询视频
      */
-    List<Video> findAll(VideoPageDTo videoPageDTo);
+    List<VideoCacheDto> findList(VideoPageDTo videoPageDTo);
 }

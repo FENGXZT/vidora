@@ -14,7 +14,6 @@ public class VideoPageDTo {
     private Integer page=1;
     private Integer pageSize=10;
 
-    //TODO 添加查询参数，例如视频名称、视频描述等
     private String keyword;     // 按视频名称、描述模糊搜索
 
     //排序

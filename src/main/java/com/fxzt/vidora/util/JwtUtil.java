@@ -61,15 +61,14 @@ public class JwtUtil {
     }
 
     /**
-     * 验证JWT令牌
+     * 从JWT令牌中获取载荷
      *
      * @param token 令牌
-     * @return 验证结果
+     * @return 载荷
      */
-    public boolean validateToken(String token) {
+    public Claims getPayload(String token) {
         try {
-            parseToken(token);
-            return true;
+            return parseToken(token).getPayload();
         } catch (ExpiredJwtException e) {
             log.warn("token 已过期");
             throw new UnauthorizedException("token 已过期");
@@ -78,15 +77,5 @@ public class JwtUtil {
             log.warn("token 签名无效");
             throw new UnauthorizedException("token 签名无效");
         }
-    }
-
-    /**
-     * 从JWT令牌中获取载荷
-     *
-     * @param token 令牌
-     * @return 载荷
-     */
-    public Claims getPayload(String token) {
-        return parseToken(token).getPayload();
     }
 }
