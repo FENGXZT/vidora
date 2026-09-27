@@ -1,6 +1,12 @@
 package com.fxzt.vidora.service;
 
+import com.fxzt.vidora.common.Result;
+import com.fxzt.vidora.pojo.query.InitUploadDto;
+import com.fxzt.vidora.pojo.vo.InitUploadVo;
+import com.fxzt.vidora.pojo.vo.PartVo;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 public interface FileService {
 
@@ -18,17 +24,42 @@ public interface FileService {
     String uploadImage(MultipartFile file, String uploadScene);
 
     /**
-     * 获取图片的URL
-     * @param imageKey 图片的key
-     * @return 图片的URL
+     * 获取预签名URL
+     * @param bucket 桶名
+     * @param key 对象名
+     * @param duration 有效期
+     * @return 预签名URL
      */
-    String getImageUrl(String imageKey);
+    String presign(String bucket,String key,Integer duration);
 
     /**
-     * 获取视频的URL
-     * @param videoKey 视频的key
-     * @return 视频的URL
+     * 初始化上传
+     * @param initUploadDto 初始化上传参数
+     * @return 初始化上传结果
      */
-    String getVideoUrl(String videoKey);
+    InitUploadVo init(InitUploadDto initUploadDto);
 
+    /**
+     * 上传分片
+     * @param file 分片文件
+     * @param partNumber 分片编号
+     * @param uploadId 上传ID
+     * @param id 视频ID
+     * @return 上传分片结果
+     */
+    PartVo uploadPart(MultipartFile file, Integer partNumber, String uploadId, Long id);
+
+    /**
+     * 合并分片
+     * @param id 视频ID
+     * @param parts 分片数据
+     */
+    void complete(Long id, List<PartVo> parts, String uploadId);
+
+    /**
+     * 中断上传,清理
+     * @param id 视频ID
+     * @param uploadId 上传ID
+     */
+    void abort(Long id, String uploadId);
 }

@@ -28,6 +28,9 @@ public class Video {
     private LocalDateTime updateTime;  //更新时间
 
 
-    private String nickname;          //发布者昵称
+    private String originalFilename;    //原始文件名
+
+
+    private String nickName;          //发布者昵称
     private String avatarKey;         //发布者头像
 }

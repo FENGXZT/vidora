@@ -18,5 +18,5 @@ public class VideoListItem {
     private Integer viewCount;          //播放数
     private LocalDateTime createTime;   //创建时间
 
-    private String nickname;            //发布者昵称
+    private String nickName;            //发布者昵称
 }

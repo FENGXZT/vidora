@@ -34,14 +34,14 @@ class VidoraServerApplicationTests {
     @Test
     void testValidateToken() {
         String token = jwtUtil.generateToken(2L, "test");
-        assertDoesNotThrow(() -> jwtUtil.validateToken(token));
+        assertDoesNotThrow(() -> jwtUtil.parseToken(token));
         log.info(token);
     }
 
     @Test
     void testValidateTokenError() {
         String token = jwtUtil.generateToken(2L, "test");
-        assertThrows(Exception.class, () -> jwtUtil.validateToken(token+"1"));
+        assertThrows(Exception.class, () -> jwtUtil.parseToken(token+"1"));
         log.info(token);
     }
 

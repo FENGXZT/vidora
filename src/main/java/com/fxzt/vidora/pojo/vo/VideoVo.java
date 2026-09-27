@@ -23,6 +23,6 @@ public class VideoVo {
     private Integer favoriteCount;          //收藏次数
     private LocalDateTime createTime;          //创建时间
 
-    private String creatorName;          //创建者名称
+    private String nickName;          //创建者名称
     private String creatorCoverUrl;     //创建者头像地址
 }

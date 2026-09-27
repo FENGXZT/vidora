@@ -1,33 +1,49 @@
 package com.fxzt.vidora.service.impl;
 
-import com.fxzt.vidora.constant.FileTypeConstants;
 import com.fxzt.vidora.constant.UploadScene;
 import com.fxzt.vidora.exception.BusinessException;
 import com.fxzt.vidora.exception.UploadException;
+import com.fxzt.vidora.mapper.VideoMapper;
+import com.fxzt.vidora.pojo.entity.Video;
+import com.fxzt.vidora.pojo.query.InitUploadDto;
+import com.fxzt.vidora.pojo.vo.InitUploadVo;
+import com.fxzt.vidora.pojo.vo.PartVo;
 import com.fxzt.vidora.service.FileService;
 import com.fxzt.vidora.util.FileTypeUtil;
-import io.minio.GetPresignedObjectUrlArgs;
-import io.minio.Http;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
+import com.fxzt.vidora.util.UserContextUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
+import software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse;
+import software.amazon.awssdk.services.s3.model.UploadPartResponse;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
+import java.io.IOException;
 import java.io.InputStream;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 public class FileServiceImpl implements FileService {
 
     @Autowired
-    private MinioClient minioClient;
+    private S3Client s3Client;
+    @Autowired
+    private S3Presigner s3Presigner;
+
+    @Autowired
+    private VideoMapper videoMapper;
 
     @Value("${minio.VideoBucketName}")
     private String videoBucketName;
@@ -35,45 +51,30 @@ public class FileServiceImpl implements FileService {
     @Value("${minio.ImageBucketName}")
     private String imageBucketName;
 
-    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
-
     @Override
     public String uploadVideo(MultipartFile file) {
+        UploadScene uploadScene = UploadScene.VIDEO;
+        //获取文件类型
+        String ext = FileTypeUtil.getFileExtension(file.getOriginalFilename());
+        String mime = resolveMime(file.getOriginalFilename(), file.getContentType(), uploadScene);
+
         long size = file.getSize();
-        Long maxSize = 2 * 1024 * 1024 * 1024L;
-        if (size > maxSize){
+        if (size > uploadScene.getMaxSize()){
             throw new UploadException(413,"视频太大");
         }
-
-        //获取文件类型
-        String name = file.getOriginalFilename();
-
-        String ext = FileTypeUtil.getFileExtension(name);
-        if (ext==null || !FileTypeConstants.VIDEO_EXT.contains(ext)){
-            throw new UploadException(415,"不支持的视频文件类型");
-        }
-
-        String mime = FileTypeUtil.getFileMime(ext, FileTypeConstants.VIDEO_TYPES);
-        String contentType = file.getContentType();
-        if (!mime.equals(contentType)){
-            log.warn("客户端 Content-Type={} 与扩展名推断={} 不一致，以扩展名为准", contentType, mime);
-        }
-
         // 上传文件
-        String objectName = LocalDate.now().format(FMT)+"/"+ UUID.randomUUID()+"."+ext ;
+        String objectName = uploadScene.buildObjectKey(ext);
         try {
             InputStream inputStream = file.getInputStream();
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(videoBucketName)
-                            .stream(inputStream, size , -1L)
-                            .object(objectName)
-                            .contentType(mime)
-                            .build()
-            );
+            PutObjectRequest request = PutObjectRequest.builder()
+                    .bucket(videoBucketName)
+                    .key(objectName)
+                    .contentType(mime)
+                    .build();
+            s3Client.putObject(request, RequestBody.fromInputStream(inputStream, size));
             return objectName;
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new UploadException(500, "上传失败");
         }
     }
 
@@ -84,71 +85,164 @@ public class FileServiceImpl implements FileService {
             throw new BusinessException("上传场景错误");
         }
         UploadScene uploadScene = UploadScene.valueOf(scene.toUpperCase());
-        //获取文件类型
-        String name = file.getOriginalFilename();
-
-        String ext = FileTypeUtil.getFileExtension(name);
-        if (ext==null || !FileTypeConstants.IMAGE_EXT.contains(ext)){
-            throw new UploadException(415,"不支持的图片文件类型");
-        }
-
-        String mime = FileTypeUtil.getFileMime(ext, FileTypeConstants.IMAGE_TYPES);
-        String contentType = file.getContentType();
-        if (!mime.equals(contentType)){
-            log.warn("客户端 Content-Type={} 与扩展名推断={} 不一致，以扩展名为准", contentType, mime);
-        }
+        String ext = FileTypeUtil.getFileExtension(file.getOriginalFilename());
+        String mime = resolveMime(file.getOriginalFilename(), file.getContentType(), uploadScene);
 
         // 上传文件
-        String objectName = uploadScene.getDir() + "/"  + LocalDate.now().format(FMT) + "/" + UUID.randomUUID() + "." + ext;
+        String objectName = uploadScene.buildObjectKey(ext);
         long size = file.getSize();
         if (size > uploadScene.getMaxSize())
             throw new UploadException(413,"图片太大");
         try {
             InputStream inputStream = file.getInputStream();
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(imageBucketName)
-                            .stream(inputStream, size , -1L)
-                            .object(objectName)
+            PutObjectRequest request = PutObjectRequest.builder()
+                    .bucket(imageBucketName)
+                    .key(objectName)
+                    .contentType(mime)
+                    .build();
+            s3Client.putObject(request, RequestBody.fromInputStream(inputStream, size));
+            return objectName;
+        } catch (Exception e) {
+            throw new UploadException(500, "上传失败");
+        }
+    }
+
+    @Override
+    public String presign(String bucket,String key,Integer duration){
+        try {
+            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                    .signatureDuration(Duration.ofMinutes(duration))
+                    .getObjectRequest(
+                            GetObjectRequest.builder().bucket(bucket).key(key).build()
+                    )
+                    .build();
+            return s3Presigner.presignGetObject(presignRequest).url().toString();
+        } catch (Exception e) {
+            log.error("生成预签名 URL 失败", e);
+            throw new UploadException(500, "生成预签名 URL 失败");
+        }
+    }
+
+    @Override
+    public InitUploadVo init(InitUploadDto initUploadDto) {
+        //生成key
+        UploadScene uploadScene = UploadScene.VIDEO;
+        String mime = resolveMime(initUploadDto.getOriginalFilename(),initUploadDto.getContentType() ,uploadScene);
+        String objectName = uploadScene.buildObjectKey(FileTypeUtil.getFileExtension(initUploadDto.getOriginalFilename()));
+
+        // 2. 调 MinIO 创建分片上传任务
+        CreateMultipartUploadResponse resp;
+        try {
+             resp = s3Client.createMultipartUpload(
+                    CreateMultipartUploadRequest.builder()
+                            .bucket(videoBucketName)
+                            .key(objectName)
                             .contentType(mime)
                             .build()
             );
-            return objectName;
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new BusinessException("创建上传任务失败");
         }
+        String uploadId = resp.uploadId();
+        Video video = Video.builder()
+                .title(initUploadDto.getTitle())
+                .videoKey(objectName)
+                .originalFilename(initUploadDto.getOriginalFilename())
+                .status(0)
+                .userId((Long) UserContextUtil.get().get("id"))
+                .coverKey(initUploadDto.getCoverKey())
+                .duration(initUploadDto.getDuration())
+                .introduction(initUploadDto.getIntroduction())
+                .build();
+        videoMapper.addVideo(video);
+
+
+        return InitUploadVo.builder()
+                .id(video.getId())
+                .uploadId(uploadId)
+                .videoKey(objectName)
+                .partSize(5 * 1024 * 1024)
+                .uploadedParts(Collections.emptyList())
+                .build();
     }
 
     @Override
-    public String getImageUrl(String imageKey) {
-        try {
-            return minioClient.getPresignedObjectUrl(
-                    GetPresignedObjectUrlArgs.builder()
-                            .method(Http.Method.GET)
-                            .bucket(imageBucketName)
-                            .object(imageKey)
-                            .expiry(20, TimeUnit.MINUTES)
-                            .build()
-            );
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+    public PartVo uploadPart(MultipartFile file, Integer partNumber, String uploadId, Long id) {
+        Video video = videoMapper.findById(id);
+        if (video == null || video.getStatus() !=0){
+            throw new BusinessException("视频不存在或已处理完成");
         }
-    }
-
-    @Override
-    public String getVideoUrl(String videoKey) {
-        try {
-            String url = minioClient.getPresignedObjectUrl(
-                    GetPresignedObjectUrlArgs.builder()
-                            .method(Http.Method.GET)
+        try{
+            InputStream in = file.getInputStream();
+            UploadPartResponse resp = s3Client.uploadPart(b -> b
                             .bucket(videoBucketName)
-                            .object(videoKey)
-                            .expiry(2, TimeUnit.HOURS)
-                            .build()
+                    .key(video.getVideoKey())
+                    .uploadId(uploadId)
+                    .partNumber(partNumber)
+                    .contentLength(file.getSize()), RequestBody.fromInputStream(in, file.getSize())
             );
-            return url;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+
+            return new PartVo(partNumber, resp.eTag());
+        } catch (IOException e) {
+            // 网络抖动 → 可重试
+            throw new BusinessException("分片上传失败，请重试");
+        } catch (S3Exception e) {
+            if (e.awsErrorDetails().errorCode().equals("NoSuchUpload")) {
+                // uploadId 失效 → 致命，需要重新 init
+                throw new BusinessException("上传会话已失效");
+            }
+            throw new BusinessException("分片上传失败");
         }
+    }
+
+    @Transactional
+    @Override
+    public void complete(Long id, List<PartVo> parts, String uploadId) {
+        Video video = videoMapper.findById(id);
+        if (video == null || video.getStatus() !=0) return;
+
+        List<CompletedPart> completedParts = parts.stream()
+                .sorted(Comparator.comparingInt(PartVo::getPartNumber))
+                .map(p -> CompletedPart.builder()
+                        .partNumber(p.getPartNumber())
+                        .eTag(p.getEtag())
+                        .build())
+                .collect(Collectors.toList());
+
+        s3Client.completeMultipartUpload(b -> b
+                .bucket(videoBucketName)
+                .key(video.getVideoKey())
+                .uploadId(uploadId)
+                .multipartUpload(m -> m.parts(completedParts))
+        );
+        video.setStatus(2);
+        videoMapper.updateVideo(video);
+    }
+
+    @Override
+    public void abort(Long id, String uploadId) {
+        Video video = videoMapper.findById(id);
+        if (video == null || video.getStatus() !=0) return;
+        try {
+            s3Client.abortMultipartUpload(b -> b
+                    .bucket(videoBucketName)
+                    .key(video.getVideoKey())
+                    .uploadId(uploadId)
+            );
+        } catch (Exception e) { log.error("清除上传会话失败", e); }
+        videoMapper.deleteById(id);
+    }
+
+
+    private String resolveMime(String fileName, String contentType, UploadScene scene) {
+        String ext = FileTypeUtil.getFileExtension(fileName);
+        if (ext==null || !scene.getAllowedTypes().containsKey(ext)){
+            throw new UploadException(415,"不支持的文件类型");
+        }
+        String mime = FileTypeUtil.getFileMime(ext, scene.getAllowedTypes());
+        if (!mime.equals(contentType)){
+            log.warn("客户端 Content-Type={} 与扩展名推断={} 不一致，以扩展名为准", contentType, mime);
+        }
+        return mime;
     }
 }

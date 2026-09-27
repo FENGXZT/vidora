@@ -12,6 +12,7 @@ import com.fxzt.vidora.util.JwtUtil;
 import com.fxzt.vidora.util.PasswordUtil;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -21,6 +22,11 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private JwtUtil jwtUtil;
+    @Autowired
+    private FileService fileService;
+
+    @Value("${minio.ImageBucketName}")
+    private String imageBucket;
 
     @Override
     public void register(@Valid UserRegisterDto userRegisterDto) {
@@ -41,12 +47,11 @@ public class UserServiceImpl implements UserService {
         User user = userMapper.findByUsername(userLoginDTo.getUsername());
         if (user == null) throw new BusinessException("用户名或密码错误");
         //判断密码是否正确
-        Boolean isPasswordCorrect = PasswordUtil.match(userLoginDTo.getPassword(), user.getPassword());
-        if (!isPasswordCorrect) throw new BusinessException("用户名或密码错误");
+        if (!PasswordUtil.match(userLoginDTo.getPassword(), user.getPassword())) throw new BusinessException("用户名或密码错误");
         //生成token
         String token = jwtUtil.generateToken(user.getId(), user.getUsername());
         //封装用户信息
-        UserLoginResult userLoginResult = new UserLoginResult(token, user.getNickname(), user.getId(), user.getAvatar());
-        return userLoginResult;
+        String avatarUrl = user.getAvatar() != null ? fileService.presign(imageBucket,user.getAvatar(),10): null;
+        return new UserLoginResult(token, user.getNickname(), user.getId(), avatarUrl);
     }
 }

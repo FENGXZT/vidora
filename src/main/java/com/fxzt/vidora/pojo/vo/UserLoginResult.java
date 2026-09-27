@@ -11,5 +11,5 @@ public class UserLoginResult {
     private String token;
     private String nickname;
     private Long id;
-    private String avatar;
+    private String avatarUrl;
 }

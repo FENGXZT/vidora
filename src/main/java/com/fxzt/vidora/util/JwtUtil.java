@@ -77,5 +77,9 @@ public class JwtUtil {
             log.warn("token 签名无效");
             throw new UnauthorizedException("token 签名无效");
         }
+        catch (JwtException e){
+            log.warn("token 无效");
+            throw new UnauthorizedException("token 无效");
+        }
     }
 }

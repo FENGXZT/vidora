@@ -4,27 +4,57 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.fxzt.vidora.mapper.VideoMapper">
 
-    <insert id="addVideo">
+    <insert id="addVideo" parameterType="com.fxzt.vidora.pojo.entity.Video" keyProperty="id" useGeneratedKeys="true">
         insert into video (user_id, title, introduction, cover_key, video_key, duration, status)
         values (#{userId}, #{title}, #{introduction}, #{coverKey}, #{videoKey}, #{duration}, #{status})
     </insert>
 
     <select id="getVideoById">
-        select v.*, u.nickname, u.avatar_key from video v left join user u on v.user_id=u.id
-        where v.id=#{id}
+        select v.*, u.nickname, u.avatar avatar_key from video v left join user u on v.user_id=u.id
+        where v.id=#{id} and v.status=2
     </select>
 
 
     <select id="findList">
         select v.id, v.title, v.duration, v.cover_key, v.create_time, v.view_count, u.nickname
         from video v left join user u on v.user_id=u.id
-        <if test="keyword != null and keyword !='' ">
-            where v.title like CONCAT('%',#{keyword},'%') or u.nickname like CONCAT('%',#{keyword},'%')
-        </if>
-        and v.status = 2
+        <where>
+            <if test="keyword != null and keyword !='' ">
+            (v.title like CONCAT('%',#{keyword},'%') or u.nickname like CONCAT('%',#{keyword},'%'))
+            </if>
+            and v.status = 2
+        </where>
         order by v.${orderBy}  ${order}
         <if test="keyword != null and keyword !='' ">
             , (v.title LIKE CONCAT('%',#{keyword},'%')) DESC
         </if>
     </select>
+
+    <update id="updateVideo">
+        update video
+        <set>
+            <if test="title != null and title !='' ">
+                title = #{title},
+            </if>
+            <if test="introduction != null and introduction !='' ">
+                introduction = #{introduction},
+            </if>
+            <if test="coverKey != null and coverKey !='' ">
+                cover_key = #{coverKey},
+            </if>
+            <if test="videoKey != null and videoKey !='' ">
+                video_key = #{videoKey},
+            </if>
+            <if test="duration != null and duration !='' ">
+                duration = #{duration},
+            </if>
+            <if test="status != null and status !='' ">
+                status = #{status},
+            </if>
+            <if test="viewCount != null and viewCount !='' ">
+                view_count = #{viewCount},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
 </mapper>

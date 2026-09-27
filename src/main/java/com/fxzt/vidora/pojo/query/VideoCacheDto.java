@@ -17,5 +17,5 @@ public class VideoCacheDto {
     private Integer viewCount;              //播放次数
     private LocalDateTime createTime;          //创建时间
 
-    private String creatorName;          //创建者名称
+    private String nickName;          //创建者名称
 }

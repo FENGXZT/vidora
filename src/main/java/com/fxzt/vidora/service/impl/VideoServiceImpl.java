@@ -18,6 +18,7 @@ import io.lettuce.core.RedisConnectionException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -40,6 +41,10 @@ public class VideoServiceImpl implements VideoService {
     @Autowired
     private FileServiceImpl fileService;
 
+    @Value("${minio.VideoBucketName}")
+    private String videoBucket;
+    @Value("${minio.ImageBucketName}")
+    private String imageBucket;
 
     @Override
     public void addVideo(VideoCreateDTo videoCreateDTo ) {
@@ -63,7 +68,7 @@ public class VideoServiceImpl implements VideoService {
         try {
             json = redis.opsForValue().get(key);
             if (json != null) {
-                return objectMapper.readValue(json, VideoVo.class);
+                return toVo(objectMapper.readValue(json, Video.class));
             }
         }  catch (RedisConnectionFailureException |RedisCommandTimeoutException e) {
         // Redis 不可用是预期内的，降级即可 —— 不打堆栈，避免刷屏
@@ -79,10 +84,9 @@ public class VideoServiceImpl implements VideoService {
             throw new BusinessException("视频不存在");
         }
 
-
-        String coverUrl = fileService.getImageUrl(video.getCoverKey());
-        String videoUrl = fileService.getVideoUrl(video.getVideoKey());
-        String creatorCoverUrl = fileService.getImageUrl(video.getAvatarKey());
+        /* String coverUrl = video.getCoverKey() != null ? fileService.getImageUrl(video.getCoverKey()) : null;
+        String videoUrl = video.getVideoKey() != null ? fileService.getVideoUrl(video.getVideoKey()) : null;
+        String creatorCoverUrl = video.getAvatarKey() != null ? fileService.getImageUrl(video.getAvatarKey()) : null;
 
         VideoVo videoVo = VideoVo.builder()
                 .id(video.getId())
@@ -97,7 +101,7 @@ public class VideoServiceImpl implements VideoService {
                 .createTime(video.getCreateTime())
                 .favoriteCount(video.getFavoriteCount())
                 .viewCount(video.getViewCount())
-                .build();
+                .build();*/
 
 
         // 3. 写缓存：失败只记日志，不影响返回
@@ -108,7 +112,7 @@ public class VideoServiceImpl implements VideoService {
         }catch (Exception e) {
             log.error("写缓存失败(未知原因)，key={}", key, e);
         }
-        return videoVo;
+        return toVo(video);
     }
 
     @Override
@@ -122,7 +126,7 @@ public class VideoServiceImpl implements VideoService {
         if(!orderbylist.contains(videoPageDTo.getOrderBy())) videoPageDTo.setOrderBy("create_time");
         if(!"asc".equals(videoPageDTo.getOrder())&&!"desc".equals(videoPageDTo.getOrder())) videoPageDTo.setOrder("desc");
 
-        String key = String.format("video:search:%s:%s:%s:%d:%d",
+        String key = String.format("vidora:video:search:%s:%s:%s:%d:%d",
                 videoPageDTo.getKeyword(), videoPageDTo.getOrderBy(), videoPageDTo.getOrder(), videoPageDTo.getPage(), videoPageDTo.getPageSize());
 
         //查缓存
@@ -158,12 +162,26 @@ public class VideoServiceImpl implements VideoService {
         return toPageResult(cached);
     }
 
+    //转换为视频详细详细实体
+    private VideoVo toVo(Video video){
+        VideoVo vo =new VideoVo();
+        BeanUtils.copyProperties(video, vo);
+        String coverUrl = video.getCoverKey() != null ? fileService.presign(imageBucket,video.getCoverKey(),30) : null;
+        String videoUrl = video.getVideoKey() != null ? fileService.presign(videoBucket,video.getVideoKey(),100) : null;
+        String creatorCoverUrl = video.getAvatarKey() != null ? fileService.presign(imageBucket,video.getAvatarKey(),30) : null;
+        vo.setCoverUrl(coverUrl);
+        vo.setVideoUrl(videoUrl);
+        vo.setCreatorCoverUrl(creatorCoverUrl);
+        return vo;
+    }
+
+    //缓存转换为分页结果
     private PageResult<VideoListItem> toPageResult(PageResult<VideoCacheDto> cached){
         List<VideoListItem> list = cached.getItems().stream().
                 map(item ->{
                     VideoListItem vo = new VideoListItem();
                     BeanUtils.copyProperties(item, vo);
-                    vo.setCoverUrl(fileService.getImageUrl(item.getCoverKey()));
+                    vo.setCoverUrl(fileService.presign(imageBucket,item.getCoverKey(),10));
                     return vo;
                 })
                 .toList();
