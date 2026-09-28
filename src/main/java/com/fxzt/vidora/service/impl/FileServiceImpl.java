@@ -11,12 +11,16 @@ import com.fxzt.vidora.pojo.vo.PartVo;
 import com.fxzt.vidora.service.FileService;
 import com.fxzt.vidora.util.FileTypeUtil;
 import com.fxzt.vidora.util.UserContextUtil;
+import io.jsonwebtoken.Claims;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
@@ -125,12 +129,58 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public InitUploadVo init(InitUploadDto initUploadDto) {
+        Boolean isReuse = false;
+        //分析文件hash，决定分支
+        if (StringUtils.hasText(initUploadDto.getFileHash())) {
+            //1.秒传，复用视频key创建新视频记录
+            Video exist = videoMapper.findReusableByHash(initUploadDto.getFileHash());
+            if (exist != null) {
+                    Video newVideo = Video.builder()
+                            .title(initUploadDto.getTitle())
+                            .videoKey(exist.getVideoKey())
+                            .originalFilename(initUploadDto.getOriginalFilename())
+                            .status(2)
+                            .userId((Long) UserContextUtil.get().get("id"))
+                            .coverKey(initUploadDto.getCoverKey())
+                            .duration(initUploadDto.getDuration())
+                            .introduction(initUploadDto.getIntroduction())
+                            .fileHash(initUploadDto.getFileHash())
+                            .build();
+                    videoMapper.addVideo(newVideo);
+                    return InitUploadVo.builder()
+                            .mode("instant")
+                            .id(newVideo.getId())
+                            .build();
+            }
+            //2.断点续传
+            exist = videoMapper.findResumableByHash(initUploadDto.getFileHash(), (Long) UserContextUtil.get().get("id"));
+            if (exist != null){
+                try {
+                    List<Integer> uploadedParts = listUploadedParts(exist.getUploadId(), exist.getVideoKey());
+                    return InitUploadVo.builder()
+                            .mode("resume")
+                            .id(exist.getId())
+                            .uploadId(exist.getUploadId())
+                            .partSize(5 * 1024 * 1024)
+                            .videoKey(exist.getVideoKey())
+                            .uploadedParts(uploadedParts)
+                            .build();
+                }catch (NoSuchUploadException e){
+                    log.warn("上传会话已失效，降级处理");
+                    isReuse = true;
+                }catch (Exception e) {
+                    throw e;
+                }
+            }
+        }
+
+        //全新上传
         //生成key
         UploadScene uploadScene = UploadScene.VIDEO;
         String mime = resolveMime(initUploadDto.getOriginalFilename(),initUploadDto.getContentType() ,uploadScene);
         String objectName = uploadScene.buildObjectKey(FileTypeUtil.getFileExtension(initUploadDto.getOriginalFilename()));
 
-        // 2. 调 MinIO 创建分片上传任务
+        //创建分片上传任务
         CreateMultipartUploadResponse resp;
         try {
              resp = s3Client.createMultipartUpload(
@@ -144,18 +194,27 @@ public class FileServiceImpl implements FileService {
             throw new BusinessException("创建上传任务失败");
         }
         String uploadId = resp.uploadId();
-        Video video = Video.builder()
-                .title(initUploadDto.getTitle())
-                .videoKey(objectName)
-                .originalFilename(initUploadDto.getOriginalFilename())
-                .status(0)
-                .userId((Long) UserContextUtil.get().get("id"))
-                .coverKey(initUploadDto.getCoverKey())
-                .duration(initUploadDto.getDuration())
-                .introduction(initUploadDto.getIntroduction())
-                .build();
-        videoMapper.addVideo(video);
-
+        Video video ;
+        if (!isReuse) {
+            video = Video.builder()
+                    .title(initUploadDto.getTitle())
+                    .videoKey(objectName)
+                    .originalFilename(initUploadDto.getOriginalFilename())
+                    .status(0)
+                    .userId((Long) UserContextUtil.get().get("id"))
+                    .coverKey(initUploadDto.getCoverKey())
+                    .duration(initUploadDto.getDuration())
+                    .introduction(initUploadDto.getIntroduction())
+                    .uploadId(uploadId)
+                    .fileHash(initUploadDto.getFileHash())
+                    .build();
+            videoMapper.addVideo(video);
+        } else {
+            video = videoMapper.findResumableByHash(initUploadDto.getFileHash(), (Long) UserContextUtil.get().get("id"));
+            video.setUploadId(uploadId);
+            video.setVideoKey(objectName);
+            videoMapper.updateVideo(video);
+        }
 
         return InitUploadVo.builder()
                 .id(video.getId())
@@ -163,21 +222,23 @@ public class FileServiceImpl implements FileService {
                 .videoKey(objectName)
                 .partSize(5 * 1024 * 1024)
                 .uploadedParts(Collections.emptyList())
+                .mode("new")
                 .build();
     }
 
     @Override
-    public PartVo uploadPart(MultipartFile file, Integer partNumber, String uploadId, Long id) {
+    public PartVo uploadPart(MultipartFile file, Integer partNumber, Long id) {
         Video video = videoMapper.findById(id);
         if (video == null || video.getStatus() !=0){
             throw new BusinessException("视频不存在或已处理完成");
         }
+        checkOwner(video.getUserId());
         try{
             InputStream in = file.getInputStream();
             UploadPartResponse resp = s3Client.uploadPart(b -> b
                             .bucket(videoBucketName)
                     .key(video.getVideoKey())
-                    .uploadId(uploadId)
+                    .uploadId(video.getUploadId())
                     .partNumber(partNumber)
                     .contentLength(file.getSize()), RequestBody.fromInputStream(in, file.getSize())
             );
@@ -197,10 +258,17 @@ public class FileServiceImpl implements FileService {
 
     @Transactional
     @Override
-    public void complete(Long id, List<PartVo> parts, String uploadId) {
+    public void complete(Long id, List<PartVo> parts) {
         Video video = videoMapper.findById(id);
-        if (video == null || video.getStatus() !=0) return;
-
+        if (video == null || video.getStatus() !=0) throw new BusinessException("视频不存在或已处理完成");
+        checkOwner(video.getUserId());
+        List<Integer> uploadedParts = null;
+        try {
+            uploadedParts = listUploadedParts(video.getUploadId(), video.getVideoKey());
+        } catch (Exception e) {
+            throw new BusinessException("获取已上传分片失败");
+        }
+        if (parts.size() != uploadedParts.size()) throw new BusinessException("分片数量不一致");
         List<CompletedPart> completedParts = parts.stream()
                 .sorted(Comparator.comparingInt(PartVo::getPartNumber))
                 .map(p -> CompletedPart.builder()
@@ -209,31 +277,69 @@ public class FileServiceImpl implements FileService {
                         .build())
                 .collect(Collectors.toList());
 
-        s3Client.completeMultipartUpload(b -> b
-                .bucket(videoBucketName)
-                .key(video.getVideoKey())
-                .uploadId(uploadId)
-                .multipartUpload(m -> m.parts(completedParts))
-        );
+        try {
+            s3Client.completeMultipartUpload(b -> b
+                    .bucket(videoBucketName)
+                    .key(video.getVideoKey())
+                    .uploadId(video.getUploadId())
+                    .multipartUpload(m -> m.parts(completedParts))
+            );
+        } catch (S3Exception e) {
+            throw new BusinessException("分片信息不一致，请重新上传");
+        }
         video.setStatus(2);
+        video.setUploadId(null);
         videoMapper.updateVideo(video);
     }
 
     @Override
-    public void abort(Long id, String uploadId) {
+    public void abort(Long id) {
         Video video = videoMapper.findById(id);
         if (video == null || video.getStatus() !=0) return;
+        checkOwner(video.getUserId());
         try {
             s3Client.abortMultipartUpload(b -> b
                     .bucket(videoBucketName)
                     .key(video.getVideoKey())
-                    .uploadId(uploadId)
+                    .uploadId(video.getUploadId())
             );
         } catch (Exception e) { log.error("清除上传会话失败", e); }
         videoMapper.deleteById(id);
     }
 
 
+    /**
+     * 列出已上传的分片
+     * @param uploadId 上传会话 ID
+     * @param key 对象键
+     * @return 已上传的分片列表
+     */
+    private List<Integer> listUploadedParts(String uploadId, String key) {
+        if (uploadId == null) return Collections.emptyList();
+        try{
+            ListPartsResponse resp = s3Client.listParts(b -> b
+                    .bucket(videoBucketName)
+                    .key(key)
+                    .uploadId(uploadId)
+            );
+            return resp.parts().stream()
+                    .map(Part::partNumber)
+                    .sorted()
+                    .collect(Collectors.toList());
+        }catch (NoSuchUploadException e){
+            throw e;
+        }catch (Exception e){
+            throw new BusinessException("获取已上传分片失败");
+        }
+    }
+
+    /**
+     * 根据文件名和内容类型，确定文件的 MIME 类型
+     * @param fileName 文件名
+     * @param contentType 内容类型
+     * @param scene 上传场景
+     * @return MIME 类型
+     */
     private String resolveMime(String fileName, String contentType, UploadScene scene) {
         String ext = FileTypeUtil.getFileExtension(fileName);
         if (ext==null || !scene.getAllowedTypes().containsKey(ext)){
@@ -244,5 +350,10 @@ public class FileServiceImpl implements FileService {
             log.warn("客户端 Content-Type={} 与扩展名推断={} 不一致，以扩展名为准", contentType, mime);
         }
         return mime;
+    }
+
+    private void checkOwner(Long id){
+        Claims claims = UserContextUtil.get();
+        if (claims != null && !id.equals(claims.get("id"))) throw new BusinessException("无权限上传");
     }
 }

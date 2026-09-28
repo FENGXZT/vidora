@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -42,4 +43,22 @@ public interface VideoMapper {
      */
     @Delete("delete from video where id = #{id}")
     void deleteById(Long id);
+
+    /**
+     * 获取清理列表
+     */
+    @Select("select * from video where status = #{status} and create_time < #{time} ")
+    List<Video> cleanList(int status, LocalDateTime time);
+
+    /**
+     * 根据文件哈希值获取已存在的视频
+     */
+    @Select("select * from video where file_hash = #{fileHash} and status = 2 limit 1")
+    Video findReusableByHash(String fileHash);
+
+    /**
+     * 根据文件哈希值和id,用户上传中断的视频
+     */
+    @Select("select * from video where file_hash = #{fileHash} and status = 0 and user_id = #{userId} limit 1")
+    Video findResumableByHash(String fileHash, Long userId);
 }

@@ -15,4 +15,5 @@ public class InitUploadDto {
     private Integer duration;            //视频时长
     private String coverKey;                 //视频封面
     private String introduction;            //简介
+    private String fileHash;              //文件哈希值
 }

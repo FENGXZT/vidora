@@ -1,5 +1,6 @@
 package com.fxzt.vidora;
 
+import com.fxzt.vidora.service.FileService;
 import com.fxzt.vidora.util.JwtUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -21,6 +22,8 @@ class VidoraServerApplicationTests {
 
     @Autowired
     private JwtUtil jwtUtil;
+    @Autowired
+    private FileService fileService;
 
     @Test
     void contextLoads() {
@@ -88,5 +91,10 @@ class VidoraServerApplicationTests {
                     .build()
                     .parseSignedClaims(token);   // 必须抛异常
         });
+    }
+
+    @Test
+    void testAbort(){
+        fileService.abort(1L);
     }
 }

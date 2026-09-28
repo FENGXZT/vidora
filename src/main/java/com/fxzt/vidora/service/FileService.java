@@ -43,23 +43,21 @@ public interface FileService {
      * 上传分片
      * @param file 分片文件
      * @param partNumber 分片编号
-     * @param uploadId 上传ID
      * @param id 视频ID
      * @return 上传分片结果
      */
-    PartVo uploadPart(MultipartFile file, Integer partNumber, String uploadId, Long id);
+    PartVo uploadPart(MultipartFile file, Integer partNumber, Long id);
 
     /**
      * 合并分片
      * @param id 视频ID
      * @param parts 分片数据
      */
-    void complete(Long id, List<PartVo> parts, String uploadId);
+    void complete(Long id, List<PartVo> parts);
 
     /**
      * 中断上传,清理
      * @param id 视频ID
-     * @param uploadId 上传ID
      */
-    void abort(Long id, String uploadId);
+    void abort(Long id);
 }

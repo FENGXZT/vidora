@@ -5,8 +5,8 @@
 <mapper namespace="com.fxzt.vidora.mapper.VideoMapper">
 
     <insert id="addVideo" parameterType="com.fxzt.vidora.pojo.entity.Video" keyProperty="id" useGeneratedKeys="true">
-        insert into video (user_id, title, introduction, cover_key, video_key, duration, status)
-        values (#{userId}, #{title}, #{introduction}, #{coverKey}, #{videoKey}, #{duration}, #{status})
+        insert into video (user_id, title, introduction, cover_key, video_key, duration, status, file_hash, upload_id, original_filename)
+        values (#{userId}, #{title}, #{introduction}, #{coverKey}, #{videoKey}, #{duration}, #{status}, #{fileHash}, #{uploadId}, #{originalFilename})
     </insert>
 
     <select id="getVideoById">
@@ -54,6 +54,7 @@
             <if test="viewCount != null and viewCount !='' ">
                 view_count = #{viewCount},
             </if>
+            upload_id = #{uploadId}
         </set>
         where id = #{id}
     </update>

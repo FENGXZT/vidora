@@ -56,9 +56,9 @@ public class UploadController {
      * @param file 分片文件
      */
     @PostMapping("/video/part")
-    public Result<PartVo> uploadPart(MultipartFile file,Integer partNumber,String uploadId,Long id){
+    public Result<PartVo> uploadPart(MultipartFile file,Integer partNumber,Long id){
         log.info("上传分片{}",partNumber);
-        return Result.success(fileService.uploadPart(file, partNumber, uploadId, id));
+        return Result.success(fileService.uploadPart(file, partNumber, id));
     }
 
     /**
@@ -67,9 +67,9 @@ public class UploadController {
      * @param parts 分片列表
      */
     @PostMapping("/video/complete")
-    public Result<Void> complete(Long id,@RequestBody List<PartVo> parts,String uploadId){
+    public Result<Void> complete(Long id,@RequestBody List<PartVo> parts){
         log.info("分片完成上传，开始合并{}",id);
-        fileService.complete(id, parts, uploadId);
+        fileService.complete(id, parts);
         return Result.success();
     }
 
@@ -78,9 +78,9 @@ public class UploadController {
      * @param id 视频id
      */
     @PostMapping("/video/abort")
-    public Result<Void> abort(Long id,String uploadId){
+    public Result<Void> abort(Long id){
         log.info("中断上传，开始清理{}",id);
-        fileService.abort(id, uploadId);
+        fileService.abort(id);
         return Result.success();
     }
 }

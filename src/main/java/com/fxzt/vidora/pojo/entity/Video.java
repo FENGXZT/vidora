@@ -29,7 +29,8 @@ public class Video {
 
 
     private String originalFilename;    //原始文件名
-
+    private String fileHash;          //文件哈希值(MD5)
+    private String uploadId;          //上传ID
 
     private String nickName;          //发布者昵称
     private String avatarKey;         //发布者头像

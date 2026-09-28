@@ -17,4 +17,6 @@ public class InitUploadVo {
     private String uploadId;            // 上传ID
     private Integer partSize;          //分片大小
     private List<Integer> uploadedParts;   //已上传的分片
+
+    private String mode;              // 上传模式
 }
