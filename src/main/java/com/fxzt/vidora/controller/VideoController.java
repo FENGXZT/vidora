@@ -3,6 +3,7 @@ package com.fxzt.vidora.controller;
 import com.fxzt.vidora.common.Result;
 import com.fxzt.vidora.pojo.entity.Video;
 import com.fxzt.vidora.pojo.query.VideoCreateDTo;
+import com.fxzt.vidora.pojo.query.VideoMyPageDto;
 import com.fxzt.vidora.pojo.query.VideoPageDTo;
 import com.fxzt.vidora.pojo.vo.PageResult;
 import com.fxzt.vidora.pojo.vo.VideoListItem;
@@ -47,11 +48,19 @@ public class VideoController {
      * 获取视频列表
      */
     @GetMapping
-    public Result<PageResult<VideoListItem>> pageVideo(VideoPageDTo videoPageDTo){
+    public Result<PageResult<VideoListItem>> pageVideo(@Valid VideoPageDTo videoPageDTo){
         log.info("获取视频列表，查询参数{}", videoPageDTo);
         PageResult<VideoListItem> videoList = videoService.pageVideo(videoPageDTo);
         return Result.success(videoList);
     }
 
-
+    /**
+     * 获取个人投稿视频列表
+     */
+    @GetMapping("/mine")
+    public Result<PageResult<VideoListItem>> pageMyVideo(@Valid VideoMyPageDto videoPageDTo){
+        log.info("获取个人投稿视频列表，查询参数{}", videoPageDTo);
+        PageResult<VideoListItem> videoList = videoService.pageMyVideo(videoPageDTo);
+        return Result.success(videoList);
+    }
 }

@@ -5,6 +5,7 @@ import com.fxzt.vidora.pojo.query.InitUploadDto;
 import com.fxzt.vidora.pojo.vo.InitUploadVo;
 import com.fxzt.vidora.pojo.vo.PartVo;
 import com.fxzt.vidora.service.FileService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,7 +47,7 @@ public class UploadController {
      * @param initUploadDto 初始化上传参数
      */
     @PostMapping("/video/init")
-    public Result<InitUploadVo> init(@RequestBody InitUploadDto initUploadDto){
+    public Result<InitUploadVo> init(@Valid @RequestBody InitUploadDto initUploadDto){
         log.info("初始化上传{}",initUploadDto.getOriginalFilename());
         return Result.success(fileService.init(initUploadDto));
     }

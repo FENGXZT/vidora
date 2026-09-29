@@ -2,9 +2,11 @@ package com.fxzt.vidora.mapper;
 
 import com.fxzt.vidora.pojo.entity.Video;
 import com.fxzt.vidora.pojo.query.VideoCacheDto;
+import com.fxzt.vidora.pojo.query.VideoMyPageDto;
 import com.fxzt.vidora.pojo.query.VideoPageDTo;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
@@ -41,13 +43,13 @@ public interface VideoMapper {
     /**
      * 根据id删除视频
      */
-    @Delete("delete from video where id = #{id}")
+    @Delete("delete from video where id = #{id}  and status = 0")
     void deleteById(Long id);
 
     /**
      * 获取清理列表
      */
-    @Select("select * from video where status = #{status} and create_time < #{time} ")
+    @Select("select * from video where status = #{status} and create_time < #{time}")
     List<Video> cleanList(int status, LocalDateTime time);
 
     /**
@@ -61,4 +63,9 @@ public interface VideoMapper {
      */
     @Select("select * from video where file_hash = #{fileHash} and status = 0 and user_id = #{userId} limit 1")
     Video findResumableByHash(String fileHash, Long userId);
+
+    /**
+     * 查询自己的视频
+     */
+    List<VideoCacheDto> findMyList(@Param("dto") VideoMyPageDto videoPageDTo, @Param("userId") Long userId);
 }

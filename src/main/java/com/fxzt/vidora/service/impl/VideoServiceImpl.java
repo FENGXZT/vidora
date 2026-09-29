@@ -5,25 +5,23 @@ import com.fxzt.vidora.mapper.VideoMapper;
 import com.fxzt.vidora.pojo.entity.Video;
 import com.fxzt.vidora.pojo.query.VideoCacheDto;
 import com.fxzt.vidora.pojo.query.VideoCreateDTo;
+import com.fxzt.vidora.pojo.query.VideoMyPageDto;
 import com.fxzt.vidora.pojo.query.VideoPageDTo;
 import com.fxzt.vidora.pojo.vo.PageResult;
 import com.fxzt.vidora.pojo.vo.VideoListItem;
 import com.fxzt.vidora.pojo.vo.VideoVo;
 import com.fxzt.vidora.service.VideoService;
+import com.fxzt.vidora.util.CacheHelper;
+import com.fxzt.vidora.util.CacheKeys;
 import com.fxzt.vidora.util.UserContextUtil;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
-import io.lettuce.core.RedisCommandTimeoutException;
-import io.lettuce.core.RedisConnectionException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.RedisConnectionFailureException;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.util.List;
@@ -35,9 +33,7 @@ public class VideoServiceImpl implements VideoService {
     @Autowired
     private VideoMapper videoMapper;
     @Autowired
-    private ObjectMapper objectMapper;
-    @Autowired
-    private StringRedisTemplate redis;
+    private CacheHelper cacheHelper;
     @Autowired
     private FileServiceImpl fileService;
 
@@ -58,60 +54,26 @@ public class VideoServiceImpl implements VideoService {
                         .userId((Long) UserContextUtil.get().get("id"))
                         .build();
         videoMapper.addVideo(video);
+        // 删除缓存
+        cacheHelper.delete(CacheKeys.videoSearchAll());
     }
 
     @Override
     public VideoVo getVideoById(Long id) {
-        String key = "vidora:video:detail:" + id;
-        // 1. 读缓存：任何异常都当作"未命中"
-        String json;
-        try {
-            json = redis.opsForValue().get(key);
-            if (json != null) {
-                return toVo(objectMapper.readValue(json, Video.class));
-            }
-        }  catch (RedisConnectionFailureException |RedisCommandTimeoutException e) {
-        // Redis 不可用是预期内的，降级即可 —— 不打堆栈，避免刷屏
-        log.warn("读缓存失败(Redis不可用)，降级查库。key={}", key);
-        } catch (Exception e) {
-        // 其他异常说明可能有代码问题 —— 必须打堆栈
-        log.error("读缓存失败(未知原因)。key={}", key, e);
-        }
+        // 1. 读缓存
+        String key = CacheKeys.videoDetail(id);
+        Video video = cacheHelper.get(key,Video.class);
+        if (video != null) return toVo(video);
 
         // 2. 查库
-        Video video = videoMapper.getVideoById(id);
+        video = videoMapper.getVideoById(id);
         if (video == null) {
             throw new BusinessException("视频不存在");
         }
 
-        /* String coverUrl = video.getCoverKey() != null ? fileService.getImageUrl(video.getCoverKey()) : null;
-        String videoUrl = video.getVideoKey() != null ? fileService.getVideoUrl(video.getVideoKey()) : null;
-        String creatorCoverUrl = video.getAvatarKey() != null ? fileService.getImageUrl(video.getAvatarKey()) : null;
+        // 3. 写缓存
+        cacheHelper.set(key,video,Duration.ofHours(2));
 
-        VideoVo videoVo = VideoVo.builder()
-                .id(video.getId())
-                .title(video.getTitle())
-                .introduction(video.getIntroduction())
-                .duration(video.getDuration())
-                .creatorName(video.getNickname())
-                .creatorCoverUrl(creatorCoverUrl)
-                .coverUrl(coverUrl)
-                .videoUrl(videoUrl)
-                .likeCount(video.getLikeCount())
-                .createTime(video.getCreateTime())
-                .favoriteCount(video.getFavoriteCount())
-                .viewCount(video.getViewCount())
-                .build();*/
-
-
-        // 3. 写缓存：失败只记日志，不影响返回
-        try {
-            redis.opsForValue().set(key, objectMapper.writeValueAsString(video), Duration.ofHours(2));
-        }catch (RedisConnectionFailureException | RedisConnectionException | RedisCommandTimeoutException e){
-            log.debug("写缓存失败，key={}", key, e);
-        }catch (Exception e) {
-            log.error("写缓存失败(未知原因)，key={}", key, e);
-        }
         return toVo(video);
     }
 
@@ -126,39 +88,50 @@ public class VideoServiceImpl implements VideoService {
         if(!orderbylist.contains(videoPageDTo.getOrderBy())) videoPageDTo.setOrderBy("create_time");
         if(!"asc".equals(videoPageDTo.getOrder())&&!"desc".equals(videoPageDTo.getOrder())) videoPageDTo.setOrder("desc");
 
-        String key = String.format("vidora:video:search:%s:%s:%s:%d:%d",
-                videoPageDTo.getKeyword(), videoPageDTo.getOrderBy(), videoPageDTo.getOrder(), videoPageDTo.getPage(), videoPageDTo.getPageSize());
-
         //查缓存
-        String json;
-        try {
-            json = redis.opsForValue().get(key);
-            if (json != null) {
-                return toPageResult(objectMapper.readValue(json, new TypeReference<PageResult<VideoCacheDto>>() {}));
-            }
-        }  catch (RedisConnectionFailureException |RedisCommandTimeoutException e) {
-            // Redis 不可用是预期内的，降级即可 —— 不打堆栈，避免刷屏
-            log.warn("读缓存失败(Redis不可用)，降级查库。key={}", key);
-        } catch (Exception e) {
-            // 其他异常说明可能有代码问题 —— 必须打堆栈
-            log.error("读缓存失败(未知原因)。key={}", key, e);
-        }
+        String key = CacheKeys.videoSearch(videoPageDTo);
+        PageResult<VideoCacheDto> cached = cacheHelper.get(key, new TypeReference<PageResult<VideoCacheDto>>() {
+        });
+        if (cached != null) return toPageResult(cached);
 
         // 2. 查库
         PageHelper.startPage(videoPageDTo.getPage(), videoPageDTo.getPageSize());
         List<VideoCacheDto> videoList = videoMapper.findList(videoPageDTo);
         Page<VideoCacheDto> page = (Page<VideoCacheDto>) videoList;
-        PageResult<VideoCacheDto> cached = new PageResult<>(page.getTotal(), page.getResult());
+        cached = new PageResult<>(page.getTotal(), page.getResult());
 
-        // 3. 写缓存：失败只记日志，不影响返回
-        try {
-            redis.opsForValue().set(key, objectMapper.writeValueAsString(cached), Duration.ofMinutes(30));
-        }catch (RedisConnectionFailureException | RedisConnectionException | RedisCommandTimeoutException e){
-            log.debug("写缓存失败，key={}", key, e);
-        }catch (Exception e) {
-            log.error("写缓存失败(未知原因)，key={}", key, e);
-        }
+        // 3. 写缓存
+        cacheHelper.set(key,cached,Duration.ofMinutes(30));
 
+        return toPageResult(cached);
+    }
+
+    @Override
+    public PageResult<VideoListItem> pageMyVideo(VideoMyPageDto videoPageDTo) {
+        // 去除空值，设置默认页码
+        videoPageDTo.setPage(videoPageDTo.getPage()!=null?videoPageDTo.getPage():1);
+        // 设置每页最大数量
+        videoPageDTo.setPageSize(videoPageDTo.getPageSize()!=null?Math.min(videoPageDTo.getPageSize(), 100):10);
+        //防止非法排序字段，防止非法排序方式
+        List<String> orderbylist = List.of("create_time", "like_count", "view_count", "favorite_count");
+        if(!orderbylist.contains(videoPageDTo.getOrderBy())) videoPageDTo.setOrderBy("create_time");
+        if(!"asc".equals(videoPageDTo.getOrder())&&!"desc".equals(videoPageDTo.getOrder())) videoPageDTo.setOrder("desc");
+
+        //查缓存
+        String key = CacheKeys.videoSearchMyVideo(videoPageDTo,(Long) UserContextUtil.get().get("id"));
+        PageResult<VideoCacheDto> cached = cacheHelper.get(key, new TypeReference<PageResult<VideoCacheDto>>() {
+        });
+        if (cached != null) return toPageResult(cached);
+
+        // 2. 查库
+        Long userId = (Long) UserContextUtil.get().get("id");
+        PageHelper.startPage(videoPageDTo.getPage(), videoPageDTo.getPageSize());
+        List<VideoCacheDto> videoList = videoMapper.findMyList(videoPageDTo, userId);
+        Page<VideoCacheDto> page = (Page<VideoCacheDto>) videoList;
+        cached = new PageResult<>(page.getTotal(), page.getResult());
+
+        // 3. 写缓存
+        cacheHelper.set(key,cached,Duration.ofMinutes(30));
         return toPageResult(cached);
     }
 

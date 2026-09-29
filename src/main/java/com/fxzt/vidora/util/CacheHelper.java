@@ -1,0 +1,100 @@
+package com.fxzt.vidora.util;
+
+import io.lettuce.core.RedisCommandTimeoutException;
+import io.lettuce.core.RedisConnectionException;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Component;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+
+import java.time.Duration;
+
+@Slf4j
+@Component
+public class CacheHelper {
+    private final StringRedisTemplate redis;
+    private final ObjectMapper objectMapper;
+
+    public CacheHelper(StringRedisTemplate redis, ObjectMapper objectMapper) {
+        this.redis = redis;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 从缓存中获取数据
+     * @param key 缓存key
+     * @param clazz 数据类型
+     * @return 数据
+     */
+    public <T> T get(String key,Class<T> clazz){
+        String json;
+        try {
+            json = redis.opsForValue().get(key);
+            if (json != null) {
+                return objectMapper.readValue(json,clazz);
+            }
+        }catch (DataAccessException e){
+            log.warn("读缓存失败(Redis不可用)，返回null。key={}", key);
+        }catch (Exception e) {
+            log.error("读缓存失败(未知原因)。key={}", key, e);
+        }
+        return null;
+    }
+
+    /**
+     * 从缓存中获取数据
+     * @param key 缓存key
+     * @param typeRef 数据类型
+     * @return 数据
+     */
+    public <T> T get(String key, TypeReference<T> typeRef){
+        String json;
+        try {
+            json = redis.opsForValue().get(key);
+            if (json != null) {
+                return objectMapper.readValue(json, typeRef);
+            }
+        } catch (DataAccessException e) {
+            log.warn("读缓存失败(Redis不可用)，返回null。key={}", key);
+        } catch (Exception e) {
+            log.error("读缓存失败(未知原因)。key={}", key, e);
+        }
+        return null;
+    }
+
+    /**
+     * 将数据写入缓存
+     * @param key 缓存key
+     * @param value 数据
+     * @param time 缓存时间
+     */
+    public <T> void set(String key, T value , Duration time){
+        if (value == null) {
+            log.warn("异常数据，key={}", key);
+            return;
+        }
+        if (time == null || time.isNegative() || time.isZero()){
+            log.warn("非法缓存时间，key={}，time={}", key, time);
+            return;
+        }
+        try {
+            redis.opsForValue().set(key, objectMapper.writeValueAsString(value), time);
+        }catch ( DataAccessException e){
+            log.warn("写缓存失败，key={}", key);
+        }catch (Exception e) {
+            log.error("写缓存失败(未知原因)，key={}", key, e);
+        }
+    }
+
+    public void delete(String key){
+        try {
+            redis.delete(key); // 删除缓存
+        }catch (DataAccessException e){
+            log.warn("删除缓存失败，key={}", key);
+        } catch (Exception e) {
+            log.error("删除缓存失败(未知原因)，key={}", key, e);
+        }
+    }
+}

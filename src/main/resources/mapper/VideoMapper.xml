@@ -58,4 +58,22 @@
         </set>
         where id = #{id}
     </update>
+
+    <select id="findMyList">
+        select v.id, v.title, v.duration, v.cover_key, v.create_time, v.view_count, u.nickname
+        from video v left join user u on v.user_id=u.id
+        <where>
+            <if test="dto.keyword != null and dto.keyword !='' ">
+                (v.title like CONCAT('%',#{dto.keyword},'%') or u.nickname like CONCAT('%',#{dto.keyword},'%'))
+            </if>
+            <if test="dto.status != null and dto.status !='' ">
+                and v.status = #{dto.status}
+            </if>
+            and v.user_id = #{userId}
+        </where>
+        order by v.${dto.orderBy}  ${dto.order}
+        <if test="dto.keyword != null and dto.keyword !='' ">
+            , (v.title LIKE CONCAT('%',#{dto.keyword},'%')) DESC
+        </if>
+    </select>
 </mapper>

@@ -2,6 +2,7 @@ package com.fxzt.vidora.service;
 
 import com.fxzt.vidora.pojo.entity.Video;
 import com.fxzt.vidora.pojo.query.VideoCreateDTo;
+import com.fxzt.vidora.pojo.query.VideoMyPageDto;
 import com.fxzt.vidora.pojo.query.VideoPageDTo;
 import com.fxzt.vidora.pojo.vo.PageResult;
 import com.fxzt.vidora.pojo.vo.VideoListItem;
@@ -22,4 +23,9 @@ public interface VideoService {
      * 分页获取视频列表
      */
     PageResult<VideoListItem> pageVideo(VideoPageDTo videoPageDTo);
+
+    /**
+     * 分页获取个人投稿视频列表
+     */
+    PageResult<VideoListItem> pageMyVideo(VideoMyPageDto videoPageDTo);
 }
