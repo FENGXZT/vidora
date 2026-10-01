@@ -12,6 +12,7 @@ import com.fxzt.vidora.service.FileService;
 import com.fxzt.vidora.util.FileTypeUtil;
 import com.fxzt.vidora.util.UserContextUtil;
 import io.jsonwebtoken.Claims;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;

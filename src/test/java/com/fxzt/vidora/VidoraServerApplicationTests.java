@@ -2,6 +2,7 @@ package com.fxzt.vidora;
 
 import com.fxzt.vidora.service.FileService;
 import com.fxzt.vidora.util.JwtUtil;
+import com.fxzt.vidora.util.PasswordUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.UnsupportedJwtException;
@@ -96,5 +97,10 @@ class VidoraServerApplicationTests {
     @Test
     void testAbort(){
         fileService.abort(1L);
+    }
+
+    @Test
+    void test(){
+        System.out.println(PasswordUtil.encrypt("123456"));
     }
 }

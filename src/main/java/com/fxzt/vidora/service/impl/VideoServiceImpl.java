@@ -12,19 +12,22 @@ import com.fxzt.vidora.pojo.vo.VideoListItem;
 import com.fxzt.vidora.pojo.vo.VideoVo;
 import com.fxzt.vidora.service.VideoService;
 import com.fxzt.vidora.util.CacheHelper;
-import com.fxzt.vidora.util.CacheKeys;
+import com.fxzt.vidora.util.RedisKeys;
 import com.fxzt.vidora.util.UserContextUtil;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 @Slf4j
 @Service
@@ -55,13 +58,13 @@ public class VideoServiceImpl implements VideoService {
                         .build();
         videoMapper.addVideo(video);
         // 删除缓存
-        cacheHelper.delete(CacheKeys.videoSearchAll());
+        cacheHelper.delete(RedisKeys.videoSearchAll());
     }
 
     @Override
     public VideoVo getVideoById(Long id) {
         // 1. 读缓存
-        String key = CacheKeys.videoDetail(id);
+        String key = RedisKeys.videoDetail(id);
         Video video = cacheHelper.get(key,Video.class);
         if (video != null) return toVo(video);
 
@@ -79,17 +82,11 @@ public class VideoServiceImpl implements VideoService {
 
     @Override
     public PageResult<VideoListItem> pageVideo(VideoPageDTo videoPageDTo) {
-        // 去除空值，设置默认页码
-        videoPageDTo.setPage(videoPageDTo.getPage()!=null?videoPageDTo.getPage():1);
-        // 设置每页最大数量
-        videoPageDTo.setPageSize(videoPageDTo.getPageSize()!=null?Math.min(videoPageDTo.getPageSize(), 100):10);
-        //防止非法排序字段，防止非法排序方式
-        List<String> orderbylist = List.of("create_time", "like_count", "view_count", "favorite_count");
-        if(!orderbylist.contains(videoPageDTo.getOrderBy())) videoPageDTo.setOrderBy("create_time");
-        if(!"asc".equals(videoPageDTo.getOrder())&&!"desc".equals(videoPageDTo.getOrder())) videoPageDTo.setOrder("desc");
+        //参数校验
+        videoPageDTo.normalize();
 
         //查缓存
-        String key = CacheKeys.videoSearch(videoPageDTo);
+        String key = RedisKeys.videoSearch(videoPageDTo);
         PageResult<VideoCacheDto> cached = cacheHelper.get(key, new TypeReference<PageResult<VideoCacheDto>>() {
         });
         if (cached != null) return toPageResult(cached);
@@ -108,17 +105,11 @@ public class VideoServiceImpl implements VideoService {
 
     @Override
     public PageResult<VideoListItem> pageMyVideo(VideoMyPageDto videoPageDTo) {
-        // 去除空值，设置默认页码
-        videoPageDTo.setPage(videoPageDTo.getPage()!=null?videoPageDTo.getPage():1);
-        // 设置每页最大数量
-        videoPageDTo.setPageSize(videoPageDTo.getPageSize()!=null?Math.min(videoPageDTo.getPageSize(), 100):10);
-        //防止非法排序字段，防止非法排序方式
-        List<String> orderbylist = List.of("create_time", "like_count", "view_count", "favorite_count");
-        if(!orderbylist.contains(videoPageDTo.getOrderBy())) videoPageDTo.setOrderBy("create_time");
-        if(!"asc".equals(videoPageDTo.getOrder())&&!"desc".equals(videoPageDTo.getOrder())) videoPageDTo.setOrder("desc");
+        //参数校验
+        videoPageDTo.normalize();
 
         //查缓存
-        String key = CacheKeys.videoSearchMyVideo(videoPageDTo,(Long) UserContextUtil.get().get("id"));
+        String key = RedisKeys.videoSearchMyVideo(videoPageDTo,(Long) UserContextUtil.get().get("id"));
         PageResult<VideoCacheDto> cached = cacheHelper.get(key, new TypeReference<PageResult<VideoCacheDto>>() {
         });
         if (cached != null) return toPageResult(cached);

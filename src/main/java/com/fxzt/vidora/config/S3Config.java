@@ -25,7 +25,12 @@ public class S3Config {
                 .region(Region.US_EAST_1) // MinIO 不校验，但 SDK 必填
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
-                .forcePathStyle(true) // ⚠️ 必须！否则会变成 virtual-hosted-style 导致 404
+//                .forcePathStyle(true) // ⚠️ 必须！否则会变成 virtual-hosted-style 导致 404
+                .serviceConfiguration(S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)      // 等价于原来的 forcePathStyle(true)
+                        .multiRegionEnabled(false)         // ⚠️ 关键：阻止读 ~/.aws/config
+                        .useArnRegionEnabled(false)        // ⚠️ 关键：阻止读 ~/.aws/credentials
+                        .build())
                 .build();
     }
 
@@ -38,6 +43,8 @@ public class S3Config {
                         AwsBasicCredentials.create(accessKey, secretKey)))
                 .serviceConfiguration(S3Configuration.builder()
                         .pathStyleAccessEnabled(true)   // ⚠️ 补上这一句
+                        .multiRegionEnabled(false)         // ⚠️ 补上
+                        .useArnRegionEnabled(false)        // ⚠️ 补上
                         .build())
                 .build();
     }

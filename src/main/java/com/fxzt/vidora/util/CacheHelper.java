@@ -1,7 +1,5 @@
 package com.fxzt.vidora.util;
 
-import io.lettuce.core.RedisCommandTimeoutException;
-import io.lettuce.core.RedisConnectionException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
