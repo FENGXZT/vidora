@@ -25,4 +25,6 @@ public class VideoVo {
 
     private String nickName;          //创建者名称
     private String creatorCoverUrl;     //创建者头像地址
+
+    private Integer liked;              //是否点赞，1为点赞，0为未点赞
 }

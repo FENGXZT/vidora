@@ -103,4 +103,5 @@ class VidoraServerApplicationTests {
     void test(){
         System.out.println(PasswordUtil.encrypt("123456"));
     }
+
 }

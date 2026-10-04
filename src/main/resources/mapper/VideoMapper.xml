@@ -76,4 +76,16 @@
             , (v.title LIKE CONCAT('%',#{dto.keyword},'%')) DESC
         </if>
     </select>
+
+    <update id="updateLikeCountFullAmount">
+        UPDATE video v
+        LEFT JOIN (
+        SELECT video_id, COUNT(*) AS cnt
+        FROM video_like
+        GROUP BY video_id
+        ) t ON v.id = t.video_id
+        SET v.like_count = COALESCE(t.cnt, 0)
+        WHERE v.like_count != COALESCE(t.cnt, 0)
+        AND v.status = 2;
+    </update>
 </mapper>

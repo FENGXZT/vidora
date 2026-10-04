@@ -4,10 +4,7 @@ import com.fxzt.vidora.pojo.entity.Video;
 import com.fxzt.vidora.pojo.query.VideoCacheDto;
 import com.fxzt.vidora.pojo.query.VideoMyPageDto;
 import com.fxzt.vidora.pojo.query.VideoPageDTo;
-import org.apache.ibatis.annotations.Delete;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -68,4 +65,27 @@ public interface VideoMapper {
      * 查询自己的视频
      */
     List<VideoCacheDto> findMyList(@Param("dto") VideoMyPageDto videoPageDTo, @Param("userId") Long userId);
+
+    /**
+     * 更新视频播放量
+     */
+    @Update("update video set view_count = #{count} where id = #{videoId} and view_count != #{count}")
+    void updateViewCount(Long videoId, Integer count);
+
+    /**
+     * 根据id获取视频播放量
+     */
+    @Select("select view_count from video where id = #{id}")
+    Long findViewCountById(Long id);
+
+    /**
+     * 更新视频点赞量
+     */
+    @Update("update video set like_count = #{likeCount} where id = #{videoId}")
+    void updateLikeCount(Long videoId, Integer likeCount);
+
+    /**
+     * 更新视频点赞量
+     */
+    void updateLikeCountFullAmount();
 }

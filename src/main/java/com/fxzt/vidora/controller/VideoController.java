@@ -2,12 +2,8 @@ package com.fxzt.vidora.controller;
 
 import com.fxzt.vidora.common.Result;
 import com.fxzt.vidora.pojo.entity.Video;
-import com.fxzt.vidora.pojo.query.VideoCreateDTo;
-import com.fxzt.vidora.pojo.query.VideoMyPageDto;
-import com.fxzt.vidora.pojo.query.VideoPageDTo;
-import com.fxzt.vidora.pojo.vo.PageResult;
-import com.fxzt.vidora.pojo.vo.VideoListItem;
-import com.fxzt.vidora.pojo.vo.VideoVo;
+import com.fxzt.vidora.pojo.query.*;
+import com.fxzt.vidora.pojo.vo.*;
 import com.fxzt.vidora.service.VideoService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -62,5 +58,55 @@ public class VideoController {
         log.info("获取个人投稿视频列表，查询参数{}", videoPageDTo);
         PageResult<VideoListItem> videoList = videoService.pageMyVideo(videoPageDTo);
         return Result.success(videoList);
+    }
+
+    /**
+     * 点赞视频
+     */
+    @PostMapping("/{id}/like")
+    public Result<Void> like(@PathVariable Long id){
+        log.info("点赞视频，id{}", id);
+        videoService.videoLike(id);
+        return Result.success();
+    }
+
+    /**
+     * 取消点赞视频
+     */
+    @DeleteMapping("/{id}/like")
+    public Result<Void> unlike(@PathVariable Long id){
+        log.info("取消点赞视频，id{}", id);
+        videoService.unlike(id);
+        return Result.success();
+    }
+
+    /**
+     * 添加视频评论
+     */
+    @PostMapping("/{id}/comment")
+    public Result<Void> addComment(@PathVariable Long id,@Valid @RequestBody CommentCreateDto dto){
+        log.info("添加视频评论，视频id{},评论{}", id, dto.getContent());
+        videoService.addComment(id, dto.getContent());
+        return Result.success();
+    }
+
+    /**
+     * 获取视频评论列表
+     */
+    @GetMapping("/{id}/comment")
+    public Result<PageCommentResult<CommentVo>> commentList(@PathVariable Long id,@Valid CommentPageDto commentPageDto){
+        log.info("获取视频评论，视频id{}", id);
+        PageCommentResult<CommentVo> commentList = videoService.commentList(id, commentPageDto);
+        return Result.success(commentList);
+    }
+
+    /**
+     * 删除视频评论
+     */
+    @DeleteMapping("/{id}/comment/{commentId}")
+    public Result<Void> deleteComment(@PathVariable Long id, @PathVariable Long commentId){
+        log.info("删除视频评论，视频id{},评论id{}", id, commentId);
+        videoService.deleteComment(id, commentId);
+        return Result.success();
     }
 }

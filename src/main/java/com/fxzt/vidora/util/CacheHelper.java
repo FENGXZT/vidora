@@ -2,6 +2,8 @@ package com.fxzt.vidora.util;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.type.TypeReference;
@@ -86,6 +88,21 @@ public class CacheHelper {
         }
     }
 
+    public Long incr(String key){
+        try {
+            return redis.opsForValue().increment(key);
+        }catch (DataAccessException e){
+            log.warn("缓存自增失败，key={}", key);
+        }catch (Exception e) {
+            log.error("缓存自增失败(未知原因)，key={}", key, e);
+        }
+        return null;
+    }
+
+    /**
+     * 删除缓存
+     * @param key 缓存key
+     */
     public void delete(String key){
         try {
             redis.delete(key); // 删除缓存
@@ -93,6 +110,53 @@ public class CacheHelper {
             log.warn("删除缓存失败，key={}", key);
         } catch (Exception e) {
             log.error("删除缓存失败(未知原因)，key={}", key, e);
+        }
+    }
+
+    /**
+     * 添加缓存
+     * @param key 缓存key
+     * @param value 数据
+     */
+    public void add(String key,String value){
+        try {
+            redis.opsForSet().add(key, value);
+        }catch (DataAccessException e){
+            log.warn("添加缓存失败，key={}", key);
+        } catch (Exception e) {
+            log.error("添加缓存失败(未知原因)，key={}", key, e);
+        }
+    }
+
+    /**
+     * 删除缓存
+     * @param key 缓存key
+     * @param value 数据
+     */
+    public void rem(String key, String value){
+        try {
+            redis.opsForSet().remove(key, value);
+        }catch (DataAccessException e){
+            log.warn("删除缓存失败，key={}", key);
+        }catch (Exception e) {
+            log.error("删除缓存失败(未知原因)，key={}", key, e);
+        }
+    }
+
+    /**
+     * 判断 member 是否在 Set 中
+     * @return 1 = 在，0 = 不在 / Redis 异常
+     */
+    public int isMember(String key, String member) {
+        try {
+            Boolean result = redis.opsForSet().isMember(key, member);
+            return Boolean.TRUE.equals(result) ? 1 : 0;
+        } catch (DataAccessException e) {
+            log.warn("判断 Set 成员失败(Redis不可用)，key={}", key);
+            return 0;
+        } catch (Exception e) {
+            log.error("判断 Set 成员失败(未知原因)，key={}", key, e);
+            return 0;
         }
     }
 }

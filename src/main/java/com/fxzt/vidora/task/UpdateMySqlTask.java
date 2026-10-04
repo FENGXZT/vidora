@@ -1,0 +1,42 @@
+package com.fxzt.vidora.task;
+
+import com.fxzt.vidora.exception.BusinessException;
+import com.fxzt.vidora.service.UpdateMySqlService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Slf4j
+@Component
+public class UpdateMySqlTask {
+    @Autowired
+    private UpdateMySqlService updateMySqlService;
+
+    @Scheduled(fixedDelay = 30_000)
+    public void updateViewCount(){
+        try {
+            updateMySqlService.updateViewCount();
+        } catch (Exception e) {
+            throw new BusinessException("更新播放量失败：" + e.getMessage());
+        }
+    }
+
+    @Scheduled(fixedDelay = 60_000)
+    public void updateLikeCount(){
+        try {
+            updateMySqlService.updateLikeCount();
+        } catch (Exception e) {
+            throw new BusinessException("更新点赞数失败：" + e.getMessage());
+        }
+    }
+
+    @Scheduled(cron = "0 0 * * * ?")
+    public void updateLikeCountFullAmount() {
+        try {
+            updateMySqlService.updateLikeCountFullAmount();
+        } catch (Exception e) {
+            throw new BusinessException("全量更新点赞数失败：" + e.getMessage());
+        }
+    }
+}

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.fxzt.vidora.mapper.CommentMapper">
+    <select id="commentList" resultType="com.fxzt.vidora.pojo.query.CommentCacheDto">
+        select c.id, c.user_id, c.content, c.create_time, c.video_id,
+        u.nickname, u.avatar as avatarKey
+        from comment c
+        left join user u
+        on c.user_id = u.id
+        where video_id = #{id}
+        <if test="cursorTime != null and cursorId != null">
+            and (c.create_time &lt; #{cursorTime} or
+            (c.create_time = #{cursorTime} and c.id &lt; #{cursorId})
+            )
+        </if>
+        ORDER BY create_time DESC, id DESC
+        LIMIT #{size}
+    </select>
+
+</mapper>

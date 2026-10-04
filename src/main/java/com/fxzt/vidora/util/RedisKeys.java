@@ -20,9 +20,9 @@ public final class RedisKeys {
      * @param vo 搜索参数
      * @return 缓存key
      */
-    public static String videoSearch(VideoPageDTo vo){
+    public static String videoSearch(VideoPageDTo vo,String version){
         String keyword = vo.getKeyword() !=null?vo.getKeyword():"all";
-        return PREFIX + "video:search:" + keyword + ":" + vo.getOrderBy()
+        return PREFIX + "video:search:" + version + ":" + keyword + ":" + vo.getOrderBy()
                 + ":" + vo.getOrder() + ":" + vo.getPage() + ":" + vo.getPageSize();
     }
     
@@ -60,6 +60,22 @@ public final class RedisKeys {
     }
 
     /**
+     * 播放量计数缓存key
+     * @return 缓存key
+     */
+    public static String videoPlayCount(){
+        return PREFIX + "video:play:*";
+    }
+
+    /**
+     * 视频搜索版本号缓存key
+     * @return 缓存key
+     */
+    public static String  videoSearchVersion(){
+        return PREFIX+"video:search:version";
+    }
+
+    /**
      * 视频点赞用户集合缓存key
      * @param videoId 视频id
      * @return 缓存key
@@ -75,5 +91,31 @@ public final class RedisKeys {
      */
     public static String videoLikeCount(Long videoId){
         return PREFIX + "video:like_count:" + videoId;
+    }
+
+    /**
+     * 点赞更新标记缓存key
+     * @return 缓存key
+     */
+    public static String videoLikeUpdateFlag(){
+        return PREFIX + "video:like_dirty" ;
+    }
+
+    /**
+     * 视频评论缓存key
+     * @param videoId 视频id
+     * @return 缓存key
+     */
+    public static String videoComments(Long videoId,Long id,String version){
+        return PREFIX+"video:comments:" +version + ":" +videoId + ":" + id;
+    }
+
+    /**
+     * 视频评论版本号缓存key
+     * @param id 视频id
+     * @return 缓存key
+     */
+    public static String videoCommentVersion(Long id) {
+        return PREFIX+"video:comment:version:"+id;
     }
 }
