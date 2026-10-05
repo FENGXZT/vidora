@@ -10,4 +10,5 @@ import lombok.NoArgsConstructor;
 public class PartVo {
     private Integer partNumber;     // 分片编号
     private String etag;           // 分片etag
+    private Long size;             // 分片大小
 }

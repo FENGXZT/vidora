@@ -147,16 +147,17 @@ public class CacheHelper {
      * 判断 member 是否在 Set 中
      * @return 1 = 在，0 = 不在 / Redis 异常
      */
-    public int isMember(String key, String member) {
+    public Integer isMember(String key, String member) {
         try {
+            if (Boolean.FALSE.equals(redis.hasKey(key))) return null;
             Boolean result = redis.opsForSet().isMember(key, member);
             return Boolean.TRUE.equals(result) ? 1 : 0;
         } catch (DataAccessException e) {
             log.warn("判断 Set 成员失败(Redis不可用)，key={}", key);
-            return 0;
+            return null;
         } catch (Exception e) {
             log.error("判断 Set 成员失败(未知原因)，key={}", key, e);
-            return 0;
+            return null;
         }
     }
 }

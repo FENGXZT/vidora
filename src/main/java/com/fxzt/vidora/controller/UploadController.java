@@ -65,12 +65,11 @@ public class UploadController {
     /**
      * 合并分片
      * @param id 视频id
-     * @param parts 分片列表
      */
     @PostMapping("/video/complete")
-    public Result<Void> complete(Long id,@RequestBody List<PartVo> parts){
+    public Result<Void> complete(Long id){
         log.info("分片完成上传，开始合并{}",id);
-        fileService.complete(id, parts);
+        fileService.complete(id);
         return Result.success();
     }
 

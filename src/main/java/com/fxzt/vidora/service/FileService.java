@@ -51,9 +51,8 @@ public interface FileService {
     /**
      * 合并分片
      * @param id 视频ID
-     * @param parts 分片数据
      */
-    void complete(Long id, List<PartVo> parts);
+    void complete(Long id);
 
     /**
      * 中断上传,清理

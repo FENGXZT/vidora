@@ -5,8 +5,8 @@
 <mapper namespace="com.fxzt.vidora.mapper.VideoMapper">
 
     <insert id="addVideo" parameterType="com.fxzt.vidora.pojo.entity.Video" keyProperty="id" useGeneratedKeys="true">
-        insert into video (user_id, title, introduction, cover_key, video_key, duration, status, file_hash, upload_id, original_filename)
-        values (#{userId}, #{title}, #{introduction}, #{coverKey}, #{videoKey}, #{duration}, #{status}, #{fileHash}, #{uploadId}, #{originalFilename})
+        insert into video (user_id, title, introduction, cover_key, video_key, duration, status, file_hash, upload_id, original_filename, declared_size)
+        values (#{userId}, #{title}, #{introduction}, #{coverKey}, #{videoKey}, #{duration}, #{status}, #{fileHash}, #{uploadId}, #{originalFilename}, #{declaredSize})
     </insert>
 
     <select id="getVideoById">
@@ -45,14 +45,20 @@
             <if test="videoKey != null and videoKey !='' ">
                 video_key = #{videoKey},
             </if>
-            <if test="duration != null and duration !='' ">
+            <if test="duration != null">
                 duration = #{duration},
             </if>
-            <if test="status != null and status !='' ">
+            <if test="status != null ">
                 status = #{status},
             </if>
-            <if test="viewCount != null and viewCount !='' ">
+            <if test="viewCount != null">
                 view_count = #{viewCount},
+            </if>
+            <if test="declaredSize != null">
+                declared_size = #{declaredSize},
+            </if>
+            <if test="createTime !=null">
+                create_time = #{createTime},
             </if>
             upload_id = #{uploadId}
         </set>
@@ -88,4 +94,19 @@
         WHERE v.like_count != COALESCE(t.cnt, 0)
         AND v.status = 2;
     </update>
+
+    <select id="findFeed" resultType="com.fxzt.vidora.pojo.query.VideoCacheDto">
+        select v.id, v.title, v.duration, v.cover_key, v.create_time, v.view_count, u.nickname
+        from video v
+        left join user u
+        on v.user_id = u.id
+        where v.status = 2 
+        <if test="cursorTime != null and cursorId != null">
+            and ( v.create_time &lt; #{cursorTime}
+                or(v.create_time = #{cursorTime} and v.id &lt; #{cursorId} )
+            )
+        </if>
+        order by v.create_time desc, v.id desc
+        limit #{size}
+    </select>
 </mapper>

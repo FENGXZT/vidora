@@ -1,0 +1,74 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      MYSQL_DATABASE: vidora
+    restart: unless-stopped
+    ports:
+      # ★ 只监听 127.0.0.1：宿主机上的 Navicat/DataGrip 照样能连，
+      #   但公网连不上（审计要求：3306 绝不能对公网开放）
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${SPRING_DATA_REDIS_PASSWORD}
+    restart: unless-stopped
+    ports:
+      # 同上：Redis 绝不能对公网开放
+      - "127.0.0.1:6379:6379"
+
+  minio:
+    # ★ 必须用 quay.io：Docker Hub 上的 minio/minio 已被官方下架，直接 pull 会失败
+    image: quay.io/minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      MINIO_SERVER_URL: ${MINIO_PUBLIC_ENDPOINT}
+    ports:
+      # 9000 必须对公网开放（方案 B：预签名 URL 的 host 就是它）
+      - "9000:9000"
+      # 9001 是管理台，只给本机 / SSH 隧道用，别开公网
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+
+  vidora-server:
+    build: .
+    ports:
+      - "8080:8080"
+    stop_grace_period: 40s
+    restart: unless-stopped
+    environment:
+      # 数据库连接
+      # ★ 这里必须是【服务名 mysql】，不能写 localhost ——
+      #   容器里的 localhost 指的是 vidora-server 自己，不是 MySQL 容器，
+      #   写 localhost 会一直连不上（原文件就是错的，已修）
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/vidora?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+
+      # Redis 连接（host 使用服务名 redis）
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${SPRING_DATA_REDIS_PASSWORD}
+
+      # MinIO 配置（服务端访问用内部地址，对外 URL 用公开地址）
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_VIDEO_BUCKET_NAME: vidora-video
+      MINIO_IMAGE_BUCKET_NAME: vidora-image
+    depends_on:
+      - mysql
+      - redis
+      - minio
+
+volumes:
+  mysql-data:
+  minio-data:

@@ -31,6 +31,7 @@ public class Video {
     private String originalFilename;    //原始文件名
     private String fileHash;          //文件哈希值(MD5)
     private String uploadId;          //上传ID
+    private Long declaredSize = 0L ;        //声明文件大小,默认0防止忘记复制导致报错
 
     private String nickName;          //发布者昵称
     private String avatarKey;         //发布者头像

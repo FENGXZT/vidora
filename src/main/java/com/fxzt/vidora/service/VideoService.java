@@ -1,18 +1,9 @@
 package com.fxzt.vidora.service;
 
-import com.fxzt.vidora.pojo.entity.Video;
-import com.fxzt.vidora.pojo.query.CommentPageDto;
-import com.fxzt.vidora.pojo.query.VideoCreateDTo;
-import com.fxzt.vidora.pojo.query.VideoMyPageDto;
-import com.fxzt.vidora.pojo.query.VideoPageDTo;
+import com.fxzt.vidora.pojo.query.*;
 import com.fxzt.vidora.pojo.vo.*;
 
 public interface VideoService {
-    /**
-     * 添加视频
-     */
-    void addVideo(VideoCreateDTo videoCreateDTo);
-
     /**
      * 根据id获取视频
      */
@@ -52,4 +43,9 @@ public interface VideoService {
      * 删除视频评论
      */
     void deleteComment(Long id, Long commentId);
+
+    /**
+     * 获取推荐视频列表
+     */
+    CursorPage<VideoListItem> feedPage(FeedPageDto feedPageDto);
 }

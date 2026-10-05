@@ -15,9 +15,14 @@ import java.net.URI;
 @Configuration
 public class S3Config {
     @Value("${minio.endpoint}") private String endpoint;
+    @Value("${minio.publicEndpoint}") private String publicEndpoint;
     @Value("${minio.accessKey}") private String accessKey;
     @Value("${minio.secretKey}") private String secretKey;
 
+    /**
+     * 用于服务端实际读写对象（上传、下载、删除）
+     * 走内网地址
+     */
     @Bean
     public S3Client s3Client() {
         return S3Client.builder()
@@ -25,7 +30,6 @@ public class S3Config {
                 .region(Region.US_EAST_1) // MinIO 不校验，但 SDK 必填
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
-//                .forcePathStyle(true) // ⚠️ 必须！否则会变成 virtual-hosted-style 导致 404
                 .serviceConfiguration(S3Configuration.builder()
                         .pathStyleAccessEnabled(true)      // 等价于原来的 forcePathStyle(true)
                         .multiRegionEnabled(false)         // ⚠️ 关键：阻止读 ~/.aws/config
@@ -34,10 +38,14 @@ public class S3Config {
                 .build();
     }
 
+    /**
+     * 用于生成预签名 URL
+     * 走外网地址
+     */
     @Bean
     public S3Presigner s3Presigner() {
         return S3Presigner.builder()
-                .endpointOverride(URI.create(endpoint))
+                .endpointOverride(URI.create(publicEndpoint))
                 .region(Region.US_EAST_1)
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))

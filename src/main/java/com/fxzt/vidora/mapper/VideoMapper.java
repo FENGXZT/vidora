@@ -88,4 +88,9 @@ public interface VideoMapper {
      * 更新视频点赞量
      */
     void updateLikeCountFullAmount();
+
+    /**
+     * 获取推荐视频列表
+     */
+    List<VideoCacheDto> findFeed(@Param("cursorTime") LocalDateTime cursorTime,@Param("cursorId") Long cursorId,@Param("size") int size);
 }

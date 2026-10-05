@@ -79,6 +79,7 @@ CREATE TABLE `video` (
   `original_filename` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '文件原始名',
   `file_hash` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '文件内容哈希(MD5)',
   `upload_id` varchar(256) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `declared_size` bigint unsigned NOT NULL DEFAULT 0 COMMENT 'init 时声明的文件总大小',
   PRIMARY KEY (`id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_status_create_time` (`status`,`create_time`),
