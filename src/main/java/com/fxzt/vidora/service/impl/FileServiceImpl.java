@@ -4,6 +4,8 @@ import com.fxzt.vidora.constant.UploadScene;
 import com.fxzt.vidora.exception.BusinessException;
 import com.fxzt.vidora.exception.UnauthorizedException;
 import com.fxzt.vidora.exception.UploadException;
+import com.fxzt.vidora.mapper.VideoFavoriteMapper;
+import com.fxzt.vidora.mapper.VideoLikeMapper;
 import com.fxzt.vidora.mapper.VideoMapper;
 import com.fxzt.vidora.pojo.entity.Video;
 import com.fxzt.vidora.pojo.query.InitUploadDto;
@@ -48,6 +50,10 @@ public class FileServiceImpl implements FileService {
 
     @Autowired
     private VideoMapper videoMapper;
+    @Autowired
+    private VideoFavoriteMapper videoFavoriteMapper;
+    @Autowired
+    private VideoLikeMapper videoLikeMapper;
 
     @Autowired
     private CacheHelper cacheHelper;
@@ -376,6 +382,7 @@ public class FileServiceImpl implements FileService {
         searchCacheVersion.bump();
     }
 
+    @Transactional
     @Override
     public void abort(Long id) {
         Video video = videoMapper.findById(id);
@@ -391,6 +398,8 @@ public class FileServiceImpl implements FileService {
             log.error("清除上传会话失败", e);
         }
         videoMapper.deleteById(id);
+        videoFavoriteMapper.deleteByVideoId(id);
+        videoLikeMapper.deleteByVideoId(id);
         cacheHelper.delete(RedisKeys.uploadContext(video.getUploadId()));
     }
 

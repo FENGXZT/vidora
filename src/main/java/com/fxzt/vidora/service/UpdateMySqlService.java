@@ -16,4 +16,14 @@ public interface UpdateMySqlService {
      * 全量更新视频点赞数
      */
     void updateLikeCountFullAmount();
+
+    /**
+     * 更新视频收藏数
+     */
+    void updateFavoriteCount();
+
+    /**
+     * 全量更新视频收藏数
+     */
+    void updateFavoriteCountFullAmount();
 }

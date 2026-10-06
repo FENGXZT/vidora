@@ -2,6 +2,7 @@ package com.fxzt.vidora.service.impl;
 
 import com.fxzt.vidora.exception.BusinessException;
 import com.fxzt.vidora.mapper.CommentMapper;
+import com.fxzt.vidora.mapper.VideoFavoriteMapper;
 import com.fxzt.vidora.mapper.VideoMapper;
 import com.fxzt.vidora.mapper.VideoLikeMapper;
 import com.fxzt.vidora.pojo.entity.Video;
@@ -10,6 +11,7 @@ import com.fxzt.vidora.pojo.vo.*;
 import com.fxzt.vidora.service.FileService;
 import com.fxzt.vidora.service.VideoService;
 import com.fxzt.vidora.util.CacheHelper;
+import com.fxzt.vidora.util.CursorPageChange;
 import com.fxzt.vidora.util.RedisKeys;
 import com.fxzt.vidora.util.UserContextUtil;
 import com.github.pagehelper.Page;
@@ -36,6 +38,8 @@ public class VideoServiceImpl implements VideoService {
     @Autowired
     private VideoLikeMapper videoLikeMapper;
     @Autowired
+    private VideoFavoriteMapper videoFavoriteMapper;
+    @Autowired
     private CommentMapper commentMapper;
     @Autowired
     private CacheHelper cacheHelper;
@@ -43,6 +47,8 @@ public class VideoServiceImpl implements VideoService {
     private FileService fileService;
     @Autowired
     private StringRedisTemplate redis;
+    @Autowired
+    private CursorPageChange cursorPageChange;
 
     @Value("${minio.VideoBucketName}")
     private String videoBucket;
@@ -68,22 +74,14 @@ public class VideoServiceImpl implements VideoService {
         }
 
         Video video = cacheHelper.get(key, Video.class);
-        if (video != null) {
-            video.setViewCount(playCount.intValue());
-            return toVo(video);
+        if (video == null){
+            video = videoMapper.getVideoById(id);
+            if (video == null) throw new BusinessException("视频不存在");
+            video.setLikeCount(videoLikeMapper.getLikeCount(id));
+            cacheHelper.set(key, video, Duration.ofHours(2));
         }
-
-        // 2. 查库
-        video = videoMapper.getVideoById(id);
-        if (video == null) {
-            throw new BusinessException("视频不存在");
-        }
-        video.setLikeCount(videoLikeMapper.getLikeCount(id));
-
-        // 3. 写缓存
         video.setViewCount(playCount.intValue());
-        cacheHelper.set(key, video, Duration.ofHours(2));
-
+        recordHistory(id);
         return toVo(video);
     }
 
@@ -137,6 +135,8 @@ public class VideoServiceImpl implements VideoService {
     @Override
     public void videoLike(Long id) {
         Long userId = (Long) UserContextUtil.get().get("id");
+        if (videoMapper.findById(id) == null)
+            throw new BusinessException("视频不存在");
         try {
             videoLikeMapper.addLike(id,userId);
             cacheHelper.add(RedisKeys.videoLikeUpdateFlag(), String.valueOf(id));
@@ -227,7 +227,9 @@ public class VideoServiceImpl implements VideoService {
             throw new BusinessException("推荐流暂未上线");
         String key = RedisKeys.videoFeed(dto);
         CursorPage<VideoCacheDto> cached = cacheHelper.get(key, new TypeReference<CursorPage<VideoCacheDto>>() {});
-        if (cached != null) return toCursorPage(cached);
+        if (cached != null) return cursorPageChange.toCursorPage(cached,VideoListItem::new
+                ,VideoCacheDto::getCoverKey,VideoListItem::setCoverUrl
+                ,VideoListItem::setCreateTime,VideoCacheDto::getCreateTime);
 
         int size = dto.getSize()+1;
         List<VideoCacheDto> list = videoMapper.findFeed(dto.getCursorTime(),dto.getCursorId(),size);
@@ -243,10 +245,41 @@ public class VideoServiceImpl implements VideoService {
         }
         CursorPage<VideoCacheDto> page = new CursorPage<>(list, hasMore, nextCursor, nextCursorId);
         cacheHelper.set(key, page, Duration.ofMinutes(5));
-        return toCursorPage(page);
+        return cursorPageChange.toCursorPage(page,VideoListItem::new
+                ,VideoCacheDto::getCoverKey,VideoListItem::setCoverUrl
+                ,VideoListItem::setCreateTime,VideoCacheDto::getCreateTime);
     }
 
-    private CursorPage<VideoListItem> toCursorPage(CursorPage<VideoCacheDto> cached) {
+    @Override
+    public void videoFavorite(Long id) {
+        Long userId = (Long) UserContextUtil.get().get("id");
+        if (videoMapper.findById(id) == null)
+            throw new BusinessException("视频不存在");
+        try {
+            videoFavoriteMapper.addFavorite(id,userId);
+            cacheHelper.add(RedisKeys.videoFavoriteUpdateFlag(), String.valueOf(id));
+            cacheHelper.add(RedisKeys.videoFavoriteUsers(id),String.valueOf(userId));
+        }catch (Exception e){
+            log.warn("视频收藏失败{}", e.getMessage());
+            throw new BusinessException("视频收藏失败");
+        }
+    }
+
+    @Override
+    public void unfavorite(Long id) {
+        Long userId = (Long) UserContextUtil.get().get("id");
+        try {
+            videoFavoriteMapper.unFavorite(id, userId);
+            cacheHelper.add(RedisKeys.videoFavoriteUpdateFlag(), String.valueOf(id));
+            cacheHelper.rem(RedisKeys.videoFavoriteUsers(id),String.valueOf(userId));
+        } catch (Exception e) {
+            log.warn("视频取消收藏失败{}", e.getMessage());
+            throw new BusinessException("视频取消收藏失败");
+        }
+    }
+
+    //转换为分页实体
+/*    private CursorPage<VideoListItem> toCursorPage(CursorPage<VideoCacheDto> cached) {
         List<VideoListItem> list = cached.getItems().stream().
                 map(item->{
                     VideoListItem vo = new VideoListItem();
@@ -255,14 +288,17 @@ public class VideoServiceImpl implements VideoService {
                     return vo;
                 }).toList();
         return new CursorPage<>(list,cached.getHasMore(),cached.getNextCursor(),cached.getNextCursorId());
-    }
+    }*/
 
     //转换为评论详细实体
     private PageCommentResult<CommentVo> toPageCommentResult(PageCommentResult<CommentCacheDto> cached) {
+        Claims claims = UserContextUtil.get();
+        Long me = (claims == null) ? null : (Long) claims.get("id");
         List<CommentVo> list = cached.getItems().stream().
                 map(item -> {
                     CommentVo vo = new CommentVo();
                     BeanUtils.copyProperties(item, vo);
+                    vo.setMine(me!=null&&me.equals(item.getUserId())?1:0);
                     vo.setAvatarUrl(item.getAvatarKey() != null ? fileService.presign(imageBucket, item.getAvatarKey(), 30) : null);
                     return vo;
                 })
@@ -284,19 +320,32 @@ public class VideoServiceImpl implements VideoService {
         Long userId = claims==null ? null : (Long) claims.get("id");
         if (userId == null){
             vo.setLiked(0);
+            vo.setFavorited(0);
         } else{
-            String key = RedisKeys.videoLikeUsers(video.getId());
-            Integer liked = cacheHelper.isMember(key, String.valueOf(userId));
+            String likedKey = RedisKeys.videoLikeUsers(video.getId());
+            Integer liked = cacheHelper.isMember(likedKey, String.valueOf(userId));
             if(liked == null){
                 if (video.getLikeCount() != null && video.getLikeCount() == 0)
                     liked = 0;
                 else {
                     liked = videoLikeMapper.isLiked(video.getId(), userId);
                     if (liked != null && liked == 1)
-                        cacheHelper.add(key,String.valueOf(userId));
+                        cacheHelper.add(likedKey,String.valueOf(userId));
+                }
+            }
+            String favoritedKey = RedisKeys.videoFavoriteUsers(video.getId());
+            Integer favorited = cacheHelper.isMember(favoritedKey, String.valueOf(userId));
+            if(favorited == null){
+                if (video.getFavoriteCount() != null && video.getFavoriteCount() == 0)
+                    favorited = 0;
+                else {
+                    favorited = videoFavoriteMapper.isFavorited(video.getId(), userId);
+                    if (favorited != null && favorited == 1)
+                        cacheHelper.add(favoritedKey,String.valueOf(userId));
                 }
             }
             vo.setLiked(liked == null ? 0 : liked );
+            vo.setFavorited(favorited == null ? 0 : favorited );
         }
         vo.setLikeCount(video.getLikeCount());
         return vo;
@@ -323,5 +372,20 @@ public class VideoServiceImpl implements VideoService {
             if (!Character.isDigit(s.charAt(i))) return false;
         }
         return true;
+    }
+
+    private void recordHistory(Long id){
+        Claims claims = UserContextUtil.get();
+        if (claims == null) return;
+        Long userId = (Long) claims.get("id");
+        if (userId == null) return;
+
+        cacheHelper.zAddMonotonicWithTtl(
+                RedisKeys.userHistory(userId),
+                String.valueOf(id),
+                System.currentTimeMillis(),
+                RedisKeys.HISTORY_MAX,
+                RedisKeys.HISTORY_TTL
+        );
     }
 }

@@ -18,4 +18,8 @@ public class VideoCacheDto {
     private LocalDateTime createTime;          //创建时间
 
     private String nickName;          //创建者名称
+
+    /** ★ 仅供游标使用：= vl.id / vf.id（点赞/收藏【行】的 id），与排序/过滤列同源 */
+    private Long cursorId;                  // 游标id
+    private LocalDateTime cursorTime;      // 游标时间
 }

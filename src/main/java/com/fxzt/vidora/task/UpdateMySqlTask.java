@@ -39,4 +39,16 @@ public class UpdateMySqlTask {
             throw new BusinessException("全量更新点赞数失败：" + e.getMessage());
         }
     }
+
+    @Scheduled(fixedDelay = 60_000)
+    public void updateFavoriteCount() {
+        try { updateMySqlService.updateFavoriteCount(); }
+        catch (Exception e) { throw new BusinessException("更新收藏数失败：" + e.getMessage()); }
+    }
+
+    @Scheduled(cron = "0 5 * * * *")
+    public void updateFavoriteCountFullAmount() {
+        try { updateMySqlService.updateFavoriteCountFullAmount(); }
+        catch (Exception e) { throw new BusinessException("全量更新收藏数失败：" + e.getMessage()); }
+    }
 }

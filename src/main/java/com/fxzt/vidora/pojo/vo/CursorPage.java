@@ -10,6 +10,10 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+/**
+ * 数值型游标不在这里
+ * 本类被 feed 与旧缓存 JSON 复用
+ */
 public class CursorPage<T> {
     private List<T> items;
     private Boolean hasMore;

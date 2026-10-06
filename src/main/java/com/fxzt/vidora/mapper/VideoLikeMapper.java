@@ -19,7 +19,7 @@ public interface VideoLikeMapper {
      * @param userId 用户id
      */
     @Delete("delete from video_like where video_id = #{id} and user_id = #{userId}")
-    void unlike(Long id, Long userId);
+    void unlike(@Param("id") Long id, @Param("userId") Long userId);
 
     /**
      * 获取点赞数
@@ -37,4 +37,11 @@ public interface VideoLikeMapper {
      */
     @Select("select count(*) from video_like where video_id = #{id} and user_id = #{userId}")
     Integer isLiked(@Param("id") Long id, @Param("userId") Long userId);
+
+    /**
+     * 根据视频id删除
+     * @param id 视频id
+     */
+    @Delete("delete from video_like where video_id = #{id}")
+    void deleteByVideoId(Long id);
 }

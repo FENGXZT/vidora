@@ -7,4 +7,32 @@
         insert into user (username,password,nickname,avatar)
         values (#{username},#{password},#{nickname},#{avatar})
     </insert>
+
+    <update id="update">
+        update user
+        <set>
+            <if test="nickname != null">
+                nickname = #{nickname},
+            </if>
+            <if test="avatar != null">
+                avatar = #{avatar},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <select id="findFollowingByUser" resultType="com.fxzt.vidora.pojo.query.UserCacheDto">
+        select u.id, u.nickname, u.avatar,
+        uf.create_time cursor_time,
+        uf.id cursor_id
+        from user_follow uf
+        join user u on uf.followee_id = u.id
+        where uf.follower_id = #{userId}
+        <if test="cursorTime != null and cursorId != null">
+            and ( uf.create_time &lt; #{cursorTime}
+            or (uf.create_time = #{cursorTime} and uf.id &lt; #{cursorId}) )
+        </if>
+        order by uf.create_time desc, uf.id desc
+        limit #{size}
+    </select>
 </mapper>

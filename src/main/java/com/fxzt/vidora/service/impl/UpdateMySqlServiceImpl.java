@@ -1,6 +1,7 @@
 package com.fxzt.vidora.service.impl;
 
 import com.fxzt.vidora.exception.BusinessException;
+import com.fxzt.vidora.mapper.VideoFavoriteMapper;
 import com.fxzt.vidora.mapper.VideoLikeMapper;
 import com.fxzt.vidora.mapper.VideoMapper;
 import com.fxzt.vidora.service.UpdateMySqlService;
@@ -29,6 +30,8 @@ public class UpdateMySqlServiceImpl implements UpdateMySqlService {
     private VideoMapper videoMapper;
     @Autowired
     private VideoLikeMapper videoLikeMapper;
+    @Autowired
+    private VideoFavoriteMapper videoFavoriteMapper;
 
     @Override
     public void updateViewCount() {
@@ -56,6 +59,11 @@ public class UpdateMySqlServiceImpl implements UpdateMySqlService {
 
     @Override
     public void updateLikeCount() {
+        /*
+        * Redis 抖动会静默丢脏标记
+        * 增量任务遍历 `members()` 期间的**并发 SADD 会被随后的 SREM 吃掉**
+        * 两条都靠整点对账兜底
+        * */
         String keys = RedisKeys.videoLikeUpdateFlag();
         try {
             Set<String> dirtyIds = redis.opsForSet().members(keys);
@@ -64,6 +72,7 @@ public class UpdateMySqlServiceImpl implements UpdateMySqlService {
                     Long videoId = Long.parseLong(idStr);
                     Integer likeCount = videoLikeMapper.getLikeCount(videoId);
                     videoMapper.updateLikeCount(videoId, likeCount);
+                    cacheHelper.delete(RedisKeys.videoDetail(videoId));
                     cacheHelper.rem(keys, idStr);
                 }catch (NumberFormatException e){
                     log.warn("非法标记，idStr={}", idStr);
@@ -81,6 +90,44 @@ public class UpdateMySqlServiceImpl implements UpdateMySqlService {
     public void updateLikeCountFullAmount() {
         try {
             videoMapper.updateLikeCountFullAmount();
+        } catch (Exception e) {
+            log.error("全量更新点赞数失败", e);
+        }
+    }
+
+    @Override
+    public void updateFavoriteCount() {
+        /*
+         * Redis 抖动会静默丢脏标记
+         * 增量任务遍历 `members()` 期间的**并发 SADD 会被随后的 SREM 吃掉**
+         * 两条都靠整点对账兜底
+         * */
+        String keys = RedisKeys.videoFavoriteUpdateFlag();
+        try {
+            Set<String> dirtyIds = redis.opsForSet().members(keys);
+            for(String idStr : dirtyIds){
+                try {
+                    Long videoId = Long.parseLong(idStr);
+                    Integer favoriteCount = videoFavoriteMapper.getFavoriteCount(videoId);
+                    videoMapper.updateFavoriteCount(videoId, favoriteCount);
+                    cacheHelper.delete(RedisKeys.videoDetail(videoId));
+                    cacheHelper.rem(keys, idStr);
+                }catch (NumberFormatException e){
+                    log.warn("非法标记，idStr={}", idStr);
+                    cacheHelper.rem(keys, idStr);
+                }catch (Exception e) {
+                    log.error("更新收藏数失败", e);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("更新收藏数失败{}", e.getMessage());
+        }
+    }
+
+    @Override
+    public void updateFavoriteCountFullAmount() {
+        try {
+            videoMapper.updateFavoriteCountFullAmount();
         } catch (Exception e) {
             log.error("全量更新点赞数失败", e);
         }

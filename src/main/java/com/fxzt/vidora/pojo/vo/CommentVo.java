@@ -16,4 +16,6 @@ public class CommentVo {
 
     private String nickName;    // 用户昵称
     private String avatarUrl;   // 用户头像
+
+    private Integer mine;        // 1 = 当前登录用户发的；匿名恒为 0
 }

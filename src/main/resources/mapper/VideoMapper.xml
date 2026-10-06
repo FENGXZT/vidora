@@ -72,7 +72,7 @@
             <if test="dto.keyword != null and dto.keyword !='' ">
                 (v.title like CONCAT('%',#{dto.keyword},'%') or u.nickname like CONCAT('%',#{dto.keyword},'%'))
             </if>
-            <if test="dto.status != null and dto.status !='' ">
+            <if test="dto.status != null">
                 and v.status = #{dto.status}
             </if>
             and v.user_id = #{userId}
@@ -95,6 +95,18 @@
         AND v.status = 2;
     </update>
 
+    <update id="updateFavoriteCountFullAmount">
+        UPDATE video v
+        LEFT JOIN (
+            SELECT video_id, COUNT(*) AS cnt
+            FROM video_favorite
+            GROUP BY video_id
+        ) t ON v.id = t.video_id
+        SET v.favorite_count = COALESCE(t.cnt, 0)
+        WHERE v.favorite_count != COALESCE(t.cnt, 0)
+        AND v.status = 2;
+    </update>
+
     <select id="findFeed" resultType="com.fxzt.vidora.pojo.query.VideoCacheDto">
         select v.id, v.title, v.duration, v.cover_key, v.create_time, v.view_count, u.nickname
         from video v
@@ -108,5 +120,45 @@
         </if>
         order by v.create_time desc, v.id desc
         limit #{size}
+    </select>
+
+    <select id="findLikedByUser" resultType="com.fxzt.vidora.pojo.query.VideoCacheDto">
+        select v.id, v.title, v.create_time create_time, v.duration, v.cover_key, vl.create_time cursor_time, vl.id cursor_id, v.view_count, u.nickname
+        from video_like vl
+        join video v on vl.video_id = v.id
+        left join user u on v.user_id = u.id
+        where vl.user_id = #{userId} and v.status = 2
+        <if test="cursorTime != null and cursorId != null">
+            and ( vl.create_time &lt; #{cursorTime}
+            or(vl.create_time = #{cursorTime} and vl.id &lt; #{cursorId} )
+            )
+        </if>
+        order by vl.create_time desc, vl.id desc
+        limit #{size}
+    </select>
+
+    <select id="findFavoritesByUser" resultType="com.fxzt.vidora.pojo.query.VideoCacheDto">
+        select v.id, v.title, v.create_time create_time, v.duration, v.cover_key, vf.create_time cursor_time, vf.id cursor_id, v.view_count, u.nickname
+        from video_favorite vf
+        join video v on vf.video_id = v.id
+        left join user u on v.user_id = u.id
+        where vf.user_id = #{userId} and v.status = 2
+        <if test="cursorTime != null and cursorId != null">
+            and ( vf.create_time &lt; #{cursorTime}
+            or(vf.create_time = #{cursorTime} and vf.id &lt; #{cursorId} )
+            )
+        </if>
+        order by vf.create_time desc, vf.id desc
+        limit #{size}
+    </select>
+
+    <select id="findByIds" resultType="com.fxzt.vidora.pojo.query.VideoCacheDto">
+        select id,title,cover_key
+        from video
+        where status = 2
+        and id in
+        <foreach collection="ids" item="item" open="(" close=")" separator=",">
+            #{item}
+        </foreach>
     </select>
 </mapper>

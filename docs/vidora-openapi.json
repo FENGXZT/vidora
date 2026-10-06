@@ -1,0 +1,3479 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Vidora API",
+    "version": "0.0.4-SNAPSHOT",
+    "description": "Vidora · 视频投稿与播放平台 —— 后端接口定义与测试数据（OpenAPI 3.0.3）。\n\n> **本版对齐 2026-10-04 的代码**：新增**收藏链路**、**首页推荐流（游标分页）**、**用户点赞/收藏列表**；鉴权支持标准 `Authorization: Bearer`；4 个读接口开放匿名访问；异常处理补齐 400/404/405。当前共 **26 条路径 / 30 个操作**。\n\n## 相对上一版（0.0.3）的变化\n\n**新增接口**\n- `POST /video/{id}/favorite`、`DELETE /video/{id}/favorite` —— 收藏 / 取消收藏（幂等，同点赞的设计）。\n- `GET /video/feed` —— 首页推荐流，**游标分页**，`sort=latest` 已实现、`sort=hot` 会返回业务异常「推荐流暂未上线」。\n- `GET /user/liked` —— 当前用户点赞过的视频（游标分页）。\n- `GET /user/favorites` —— 当前用户收藏过的视频（游标分页）。\n- `GET /user/me` —— 当前登录用户信息（昵称 / 头像预签名 URL / 账号）。\n- `PUT /user/profile` —— 修改昵称 / 头像；跨字段校验「至少改一项」，改了昵称会 bump 搜索缓存版本号。\n- `POST /user/{id}/follow`、`DELETE /user/{id}/follow` —— 关注 / 取消关注。**都是幂等**的（唯一键 + `ON DUPLICATE KEY UPDATE`；重复关注仍返回 `code=1`）。\n- `GET /user/following` —— 我关注的人（用户维度游标分页，返回 `UserListItem`）。\n- `GET /user/history` —— 浏览历史；**分数游标**分页，`data` 恰好 3 字段、item 恰好 4 字段（前端 checkapi.mjs 强断言）。\n\n**移除接口**\n- 🔴 **`POST /video` 已删除**。投稿不再有独立的\"创建视频\"接口：视频记录现在由 **`POST /upload/video/init` 直接创建**（`FileServiceImpl` 内部调 `addVideo`），`complete` 后置为 `status=2` 可播放。旧的 `VideoCreateDTo` 已不存在。\n\n**行为变更**\n- 🔑 **鉴权**：拦截器现在**优先读 `Authorization: Bearer <jwt>`**，读不到再回退到旧的 `token` 自定义头。两者都支持，**推荐用 Bearer**（Apifox/Postman 可原生识别，也避免了上一版文档里\"两个同名 `token` 头被合并\"的坑）。\n- 🔓 **匿名访问**：`GET /video`、`GET /video/feed`、`GET /video/{id}`、`GET /video/{id}/comment` 四个读接口**没有 token 也能调**；带 token 时同一接口会额外返回个性化字段（`liked`/`favorited`/`mine`）。其余接口仍需登录。\n- ✅ **异常处理补齐**：参数校验/类型不匹配/JSON 解析失败现在返回 **400**，方法不支持返回 **405**，路径不存在返回 **404**（此前这些全是 200 或 500）。详见下方状态码表。\n- ✅ **`POST /upload/video/complete` 不再需要传分片数组**：签名从 `(Long id, @RequestBody List<PartVo> parts)` 变成 **`(Long id)`**，服务端自己用 S3 `listParts` 取真实分片。\n- ✅ **`CommentVo` 新增 `mine` 字段**（1 = 当前登录用户发的评论，匿名请求恒为 0）。\n- ✅ `video` 表新增 `declared_size` 列（记录 init 时声明的文件大小）。\n- ✅ 评论游标分页已修复（`and` 位置正确），深游标可正常翻页；`DELETE /video/{id}/comment/{commentId}` 已能真实删除。\n\n## 导入 Apifox\nApifox → 项目设置 → 导入数据 → **OpenAPI/Swagger** → 选择本文件。\n\n导入后**每个需要登录的接口都已经预填好请求头** `Authorization: Bearer {{token}}`，只需做一次环境变量配置：\n\n1. **建环境变量**：Apifox → 环境管理 → 新建环境（如「本地」）→ 添加变量 `token`，值先留空，第 2 步会自动写入。\n2. **让登录接口自动写入 token**：打开 `POST /user/login` → **后置操作 → 添加后置操作**，两种方式任选：\n   - **提取变量**：来源 `Response Body`，表达式 `$.data.token`，变量名 `token`，作用域选**环境变量**。\n   - **自定义脚本**（直接粘贴）：\n     ```javascript\n     const j = pm.response.json();\n     if (j && j.code === 1 && j.data && j.data.token) {\n       pm.environment.set(\"token\", j.data.token);\n       console.log(\"token 已写入环境变量，长度 = \" + j.data.token.length);\n     }\n     ```\n3. **其余接口不用管**：已经带好 `Authorization: Bearer {{token}}`，跑完登录直接跑即可。\n\n> ⚠️ **请把 Apifox 的「Auth」保持为「无」。** 本文件**故意不在接口上声明 `security`** —— 否则 Apifox 会再自动创建一个 Auth 条目，与服务端的单一 `Authorization` 头冲突（两个同名头被 Tomcat 合并成 `Bearer x, Bearer x` → 全部 401）。旧版文档踩过这个坑。\n>\n> 4 个匿名读接口（`GET /video`、`GET /video/feed`、`GET /video/{id}`、`GET /video/{id}/comment`）的 `Authorization` 是**可选**的：带上会多返回 `liked` / `favorited` / `mine`，不带也照常返回。\n## 鉴权细节\n- 服务端**优先读 `Authorization: Bearer <jwt>`**（标准写法）；读不到再回退到旧的 `token: <jwt>` 自定义头（走这个头时**不要**加 `Bearer ` 前缀）。\n- JWT 为 **HS256**，有效期 **12 小时**，载荷含 `id`、`username`、`iat`、`exp`。\n- 拦截器 `addPathPatterns(\"/**\")`，排除 `/user/login`、`/user/register`；另有 4 个只读接口允许匿名访问。\n- ⚠️ **匿名读接口带了无效 token 不会报 401，而是静默降级为匿名**（返回 200，`liked`/`favorited`/`mine` 归 0）。非匿名接口带了无效 token 才会 401。\n- 空的 `Authorization` / `token` 头会被当作「未登录」（401），不会 500。\n- 没有登出/吊销机制：token 一旦签发，12 小时内始终有效（改密码、封禁都不影响它）。\n## 统一返回结构\n所有接口返回同一信封 `Result`：`{\"code\": 1|0, \"data\": ..., \"message\": \"...\"}`。`code = 1` 成功，`code = 0` 失败。\n\n⚠️ **HTTP 状态码与 `code` 必须同时判断**（本版已大幅修正，但与常见 REST 习惯仍有差异）：\n\n| 场景 | HTTP | code | message 示例 |\n|---|---|---|---|\n| 成功 | 200 | 1 | `success` |\n| **业务失败**（视频不存在、评论不存在、无权限删除、收藏失败、`sort=hot`…） | **200** | 0 | `业务异常： 视频不存在` |\n| 参数校验失败（`@Valid`） | 400 | 0 | `keyword 关键字只能包含中文、字母、数字、空格、下划线、横线和点` |\n| 参数类型不匹配（如 `/video/abc`） | 400 | 0 | `参数 id 类型不正确` |\n| 请求体 JSON 格式错误 | 400 | 0 | `请求体格式错误` |\n| 未登录 / token 无效 / 签名无效 / 已过期 | 401 | 0 | `权限异常： 未登录` |\n| 路径不存在 | 404 | 0 | `资源不存在` |\n| 请求方法不支持 | 405 | 0 | `请求方式不支持: PUT` |\n| 文件过大 / 类型不支持（上传链路） | 413 / 415 | 0 | `上传失败： 视频太大` |\n| 未预期异常 | 500 | 0 | `系统繁忙，请稍后重试` |\n\n> ⚠️ **业务失败仍是 `HTTP 200 + code=0`**，这是本版唯一没有统一的语义。前端与网关如果只看 HTTP 状态码，会把「无权限删除」「视频不存在」当成成功。\n\n## 已知问题（已对照 2026-10-04 的代码逐条核实）\n> 本节**只保留当前代码里仍然存在**的问题，已修复的不再列出。\n\n1. ⚠️ **`GET /video/{id}/comment` 不校验视频是否存在**：给不存在的视频查评论返回 `code=1` + 空列表，而不是「视频不存在」。\n2. ⚠️ **Redis 不可用时 `GET /video/{id}` 返回 500**：播放量那段是 `StringRedisTemplate` 裸调用（`redis.opsForValue()`），没有像 `CacheHelper` 那样降级；其余接口在 Redis 挂掉时都能降级返回。\n3. ⚠️ **`?size=` 传空值会让评论列表 500**：`CommentPageDto.size` 被 Spring 绑成 `null`（默认值 20 被覆盖），`getSize()+1` 拆箱 NPE。**不传该参数则用默认值 20，正常。**\n4. ⚠️ **评论缓存键不含 `size` / `cursorTime`**：对同一个 `cursorId` 先请求 `size=1` 再请求 `size=20`，第二次会命中第一次的缓存，只能拿到 1 条（页大小被先到的请求锁定 30 分钟）。\n5. ⚠️ **秒传不区分用户**：`findReusableByHash(fileHash)` 不带 user 过滤，任意登录用户只要知道某公开视频的 `fileHash`（= 文件 MD5）就能触发秒传、复用别人的对象；`fileHash` 也完全由客户端提供、服务端从不重算。（已新增「文件大小与首次声明不一致」的校验，收窄了利用面。）\n6. ℹ️ `GET /test`、`GET /test/redis`、`POST /test/echo` 是开发期探针，**仍留在生产代码里**（需登录才能调，`/test/redis` 会真实写 Redis 并回显内部键值）。\n## 缓存与预签名说明\n- 库里只存 object key，不存 URL。`coverUrl` / `videoUrl` / `creatorCoverUrl` / `avatarUrl` 都是**每次响应实时生成的预签名 URL**，有效期：列表与推荐流封面 **10 分钟**、详情封面与头像 **30 分钟**、视频 **100 分钟**。\n- 桶是**私有**的，直接用裸对象地址会 403，必须用返回的预签名 URL。\n- 缓存键（便于排查）：详情 `vidora:video:detail:{id}`、列表 `vidora:video:search:{version}:...`、我的投稿 `vidora:video:myvideo:search:{userId}:...`、推荐流 `vidora:video:feed:{sort}:{cursor}:{size}`、评论 `vidora:video:comments:{version}:{videoId}:{cursorId}`、播放量 `vidora:video:play:{id}`。",
+    "contact": {
+      "name": "Vidora"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "本地开发环境（Spring Boot 内嵌 Tomcat，默认端口 8080）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "认证 / Auth",
+      "description": "公开接口。拦截器白名单只有 `/user/login` 与 `/user/register`。登录返回的 `data.token` 用于后续所有需要鉴权的接口。"
+    },
+    {
+      "name": "用户 / User",
+      "description": "当前用户的资料、社交、历史与素材库。**全部需要登录。** `GET /user/me` 取当前用户信息；`PUT /user/profile` 改昵称/头像；`POST`/`DELETE /user/{id}/follow` 关注/取关（**幂等**）；`GET /user/following` 我关注的人；`GET /user/history` 浏览历史（分数游标）；`GET /user/liked`、`GET /user/favorites` 本人点赞 / 收藏过的 `status=2` 视频。"
+    },
+    {
+      "name": "视频 / Video",
+      "description": "视频列表（分页 + 模糊搜索 + 动态排序）、我的投稿、详情（Redis 缓存 + 播放量自增 + `liked`/`favorited`）。注意：**已没有 `POST /video` 投稿接口**，投稿走 `/upload/video/*`。"
+    },
+    {
+      "name": "推荐流 / Feed",
+      "description": "首页推荐流，游标分页。`sort=latest` 可用；`sort=hot` 未实现，调用会返回业务异常「推荐流暂未上线」。**可匿名访问。**"
+    },
+    {
+      "name": "互动 · 点赞 / Like",
+      "description": "点赞 / 取消点赞。幂等（`video_like` 有 `uk_video_user` 唯一键，插入用 `INSERT IGNORE`）。会校验视频是否存在，但**不校验 `status`**（已下架的视频仍可点赞）。"
+    },
+    {
+      "name": "互动 · 收藏 / Favorite",
+      "description": "收藏 / 取消收藏。幂等（`video_favorite` 同样有 `uk_video_user`）。收藏前会校验视频存在，但不校验 `status`。"
+    },
+    {
+      "name": "互动 · 评论 / Comment",
+      "description": "评论增删查，列表用**游标分页**（`cursorTime` + `cursorId` 复合游标）。列表**可匿名访问**（匿名时 `mine` 恒为 0）。删除只能删自己发的。"
+    },
+    {
+      "name": "上传 · 普通 / Simple upload",
+      "description": "同步上传：文件直传对象存储，**只返回 object key，不落库**。用于上传封面/头像这类小文件。"
+    },
+    {
+      "name": "上传 · 分片 / Multipart upload",
+      "description": "S3 Multipart Upload：`init`（含秒传 / 断点续传 / 会话失效降级）→ `part`(1..N) → `complete` / `abort`。**`init` 会直接创建视频记录**（status=0），`complete` 后置为可播放。除最后一片外每片最小 5MB。"
+    },
+    {
+      "name": "探针 / Test",
+      "description": "开发期探针接口。⚠️ 同样受拦截器保护，必须带 token，且 `/test/redis` 会真实写 Redis。"
+    }
+  ],
+  "security": [],
+  "paths": {
+    "/user/register": {
+      "post": {
+        "tags": [
+          "认证 / Auth"
+        ],
+        "summary": "用户注册",
+        "description": "注册新用户。密码用 BCrypt 加密后入库（`$2a$10$` + 60 字符，自带盐）。\n\n- `username` 有唯一索引，重复注册返回 `业务异常： 该用户名已存在`（HTTP 200 + code=0）。\n- 校验：`username` / `password` / `nickname` 均不能为空白（`@NotBlank`），失败返回 **HTTP 400**。\n- ⚠️ 无长度校验：`username` 超过 20 字符（列宽 `varchar(20)`）会触发 MySQL `Data too long` → **500**。\n- ⚠️ 密码超过 **72 字节**（例如 25 个汉字）时 BCrypt 抛异常 → **500**；建议客户端自行限制。\n- ⚠️ 不做 trim：`\" bob\"` 与 `\"bob\"` 是两个不同账号。\n- ⚠️ 无验证码/限流，可被脚本批量注册。",
+        "operationId": "registerUser",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRegisterDto"
+              },
+              "examples": {
+                "normal": {
+                  "summary": "正常注册",
+                  "value": {
+                    "username": "apitest01",
+                    "password": "Passw0rd!",
+                    "nickname": "Api Test",
+                    "avatar": null
+                  }
+                },
+                "duplicate": {
+                  "summary": "用户名已存在（预期 HTTP200 + code=0）",
+                  "value": {
+                    "username": "apitest01",
+                    "password": "Passw0rd!",
+                    "nickname": "Api Test"
+                  }
+                },
+                "blankNickname": {
+                  "summary": "昵称为空（预期 HTTP 400）",
+                  "value": {
+                    "username": "apitest02",
+                    "password": "Passw0rd!",
+                    "nickname": ""
+                  }
+                },
+                "tooLongUsername": {
+                  "summary": "21 字符用户名（当前 500，长度校验缺失）",
+                  "value": {
+                    "username": "abcdefghijklmnopqrstu",
+                    "password": "Passw0rd!",
+                    "nickname": "n"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功 / 用户名已存在（看 code）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "字段超长 / 密码超 72 字节等",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/login": {
+      "post": {
+        "tags": [
+          "认证 / Auth"
+        ],
+        "summary": "用户登录（获取 token）",
+        "description": "登录成功返回 `data.token`，**12 小时有效**。后续请求放进 `Authorization: Bearer <token>`（推荐）或 `token: <token>`。\n\n**在 Apifox 里请给本接口加一个「后置操作」，把 token 自动写入环境变量**，这样其余接口预填的 `Bearer {{token}}` 就能直接生效：\n- **提取变量**：来源 `Response Body`，表达式 `$.data.token`，变量名 `token`，作用域选**环境变量**。\n- 或**自定义脚本**：\n  ```javascript\n  const j = pm.response.json();\n  if (j && j.code === 1 && j.data && j.data.token) {\n    pm.environment.set(\"token\", j.data.token);\n    console.log(\"token 已写入环境变量，长度 = \" + j.data.token.length);\n  }\n  ```\n\n- 用户名不存在与密码错误返回**相同的**提示 `业务异常： 用户名或密码错误`，不泄露账号是否存在。\n- ⚠️ 无失败次数限制与验证码，可被字典爆破。\n- ⚠️ 无登出接口：token 签发后 12 小时内无法主动作废。\n- ℹ️ 本地测试账号（`docs/test-data.sql` 建的那批）：`testuser` / `alice` / `bob` / `xiaowang` / `xiaoli` / `xiaozhang`，口令均为 `123456`。",
+        "operationId": "loginUser",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserLoginDTo"
+              },
+              "examples": {
+                "normal": {
+                  "summary": "正常登录",
+                  "value": {
+                    "username": "xiaoli",
+                    "password": "123456"
+                  }
+                },
+                "wrongPassword": {
+                  "summary": "密码错误（预期 code=0）",
+                  "value": {
+                    "username": "xiaoli",
+                    "password": "wrongpass"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录结果（code=1 时 data 里是 token）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultUserLoginResult"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "token": "eyJhbGciOiJIUzI1NiJ9.xxx.yyy",
+                        "nickname": "小李",
+                        "id": 5,
+                        "avatarUrl": null
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "fail": {
+                    "summary": "失败",
+                    "value": {
+                      "code": 0,
+                      "data": null,
+                      "message": "业务异常： 用户名或密码错误"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "用户名或密码为空白",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/me": {
+      "get": {
+        "tags": [
+          "用户 / User"
+        ],
+        "summary": "获取当前登录用户信息",
+        "description": "从 JWT 里的 `id` 查库返回当前登录用户的信息。**需要登录。**\n\n- `avatarUrl` 是头像的预签名 URL，有效期 **10 分钟**；没设置头像时为 `null`。\n- `username` 是登录账号（唯一），`nickname` 是昵称（会展示在评论区与视频作者处）。\n- 每次都查库，**不缓存**；但昵称被修改后搜索引擎的版本号会被 bump（见 `PUT /user/profile`）。\n- ⚠️ 如果 token 还在有效期内、但对应的用户行已被删除，返回 **HTTP 401 + `权限异常： 登录已过期`**（而不是 500）。",
+        "operationId": "getCurrentUser",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前用户信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultUserMeVo"
+                },
+                "examples": {
+                  "ok": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "nickname": "小李",
+                        "avatarUrl": "http://localhost:9000/vidora-image/avatar/2026/10/04/xxx.jpg?X-Amz-...",
+                        "id": 5,
+                        "username": "xiaoli"
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "noAvatar": {
+                    "summary": "未设置头像",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "nickname": "小李",
+                        "avatarUrl": null,
+                        "id": 5,
+                        "username": "xiaoli"
+                      },
+                      "message": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录 / token 无效 / 用户已被删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/profile": {
+      "put": {
+        "tags": [
+          "用户 / User"
+        ],
+        "summary": "修改当前用户的昵称 / 头像",
+        "description": "修改当前登录用户的**昵称**和/或**头像**。需要登录，`id` 取自 JWT，**无法修改他人资料**。\n\n- **昵称与头像至少要传一项**（DTO 上的 `@AssertTrue` 跨字段校验）：两个都不传、或都传空串 → **HTTP 400**，message 形如 `atLeastOnePresent 昵称和头像至少要改一项`。\n- `nickname`：最长 **20 字**（超长 → 400 `昵称不能超过 20 个字`），服务端会 **trim**。\n- `avatar`：传的是 **object key**（先调 `POST /upload/image?scene=avatar` 拿到返回的 key），**不是 URL**；服务端会 trim。\n- 传空串等价于「这一项不改」。\n- 只更新传了的字段（SQL 用动态 `<set>`），用户名、密码等不受影响。\n- 改了昵称时会顺带 **bump 搜索缓存版本号**，让视频搜索/列表中的作者昵称尽快更新。\n- 返回修改后的 `id` / `nickname` / `avatarUrl`（头像为 10 分钟预签名 URL）。\n- ⚠️ `avatar` 没有长度校验，而数据库列是 `varchar(255)`；传超长 key 会触发 MySQL `Data too long` → **500**。（代码可见，未运行时验证）",
+        "operationId": "updateProfile",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              },
+              "examples": {
+                "nicknameOnly": {
+                  "summary": "只改昵称",
+                  "value": {
+                    "nickname": "新昵称"
+                  }
+                },
+                "avatarOnly": {
+                  "summary": "只改头像（值来自 POST /upload/image?scene=avatar 的返回）",
+                  "value": {
+                    "avatar": "avatar/2026/10/04/3fac8b1c-d158-4249-a27f-6e56accda5d2.jpg"
+                  }
+                },
+                "both": {
+                  "summary": "两项都改",
+                  "value": {
+                    "nickname": "新昵称",
+                    "avatar": "avatar/2026/10/04/3fac8b1c-....jpg"
+                  }
+                },
+                "nothing": {
+                  "summary": "两项都不传（预期 400）",
+                  "value": {}
+                },
+                "tooLongNickname": {
+                  "summary": "昵称 21 字（预期 400）",
+                  "value": {
+                    "nickname": "abcdefghijklmnopqrstu"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "修改成功，返回最新资料",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultUserProfileVo"
+                },
+                "examples": {
+                  "ok": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "id": 5,
+                        "avatarUrl": "http://localhost:9000/vidora-image/avatar/2026/10/04/xxx.jpg?X-Amz-...",
+                        "nickname": "新昵称"
+                      },
+                      "message": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "两项都没传 / 昵称超长",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                },
+                "examples": {
+                  "none": {
+                    "summary": "两项都不传",
+                    "value": {
+                      "code": 0,
+                      "data": null,
+                      "message": "atLeastOnePresent 昵称和头像至少要改一项"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录 / 用户已被删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/liked": {
+      "get": {
+        "tags": [
+          "用户 / User"
+        ],
+        "summary": "我点赞过的视频（游标分页）",
+        "description": "返回当前登录用户点赞过的、且 `status=2` 的视频列表，按**点赞时间倒序**（`video_like.create_time desc, video_like.id desc`）。\n\n- 需要登录。`cursorTime` 与 `cursorId` **必须同时传或同时不传**，只传一个会返回 `业务异常： 游标参数不完整`。\n- 取上一页返回的 `nextCursor` / `nextCursorId` 作为下一页入参即可翻页。\n- `size` 范围 1~50，默认 20。\n- 封面 `coverUrl` 为预签名 URL，有效期 10 分钟。",
+        "operationId": "listMyLikedVideos",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "description": "每页条数，1~50，默认 20"
+          },
+          {
+            "name": "cursorTime",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "上一页最后一条的 createTime（ISO 8601，**必须带 T**，如 2026-10-04T16:52:51）"
+          },
+          {
+            "name": "cursorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "上一页最后一条的 id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "游标分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVideoCursorPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "游标不成对 / size 越界",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/favorites": {
+      "get": {
+        "tags": [
+          "用户 / User"
+        ],
+        "summary": "我收藏过的视频（游标分页）",
+        "description": "返回当前登录用户收藏过的、且 `status=2` 的视频列表，按**收藏时间倒序**（`video_favorite.create_time desc, video_favorite.id desc`）。\n\n参数与翻页方式同 `GET /user/liked`。",
+        "operationId": "listMyFavoriteVideos",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "description": "每页条数，1~50，默认 20"
+          },
+          {
+            "name": "cursorTime",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "上一页最后一条的 createTime（ISO 8601，带 T）"
+          },
+          {
+            "name": "cursorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "上一页最后一条的 id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "游标分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVideoCursorPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "游标不成对 / size 越界",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/{id}/follow": {
+      "post": {
+        "tags": [
+          "用户 / User"
+        ],
+        "summary": "关注用户",
+        "description": "关注指定用户。需要登录，`follower_id` 取自 JWT。\n\n- **幂等**：`user_follow` 上有唯一键 `uk_follower_followee(follower_id, followee_id)`，插入语句是 `INSERT ... ON DUPLICATE KEY UPDATE id = id` —— **重复关注不报错、不产生重复行**，直接返回 `code=1`。\n- 不能关注自己 → `业务异常： 不能关注自己`。\n- 目标用户不存在 → `业务异常： 用户不存在`。\n- 我关注的人见 `GET /user/following`；**没有**对应的粉丝列表接口。",
+        "operationId": "followUser",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "目标用户 id（关注谁 / 取消关注谁）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "关注成功 / 不能关注自己 / 用户不存在（看 code 与 message）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                },
+                "examples": {
+                  "ok": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 1,
+                      "data": null,
+                      "message": "success"
+                    }
+                  },
+                  "duplicate": {
+                    "summary": "重复关注（幂等，仍返回成功）",
+                    "value": {
+                      "code": 1,
+                      "data": null,
+                      "message": "success"
+                    }
+                  },
+                  "self": {
+                    "summary": "关注自己",
+                    "value": {
+                      "code": 0,
+                      "data": null,
+                      "message": "业务异常： 不能关注自己"
+                    }
+                  },
+                  "notFound": {
+                    "summary": "目标用户不存在",
+                    "value": {
+                      "code": 0,
+                      "data": null,
+                      "message": "业务异常： 用户不存在"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录 / token 无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "用户 / User"
+        ],
+        "summary": "取消关注",
+        "description": "取消对指定用户的关注。需要登录。\n\n- 按 `(follower_id, followee_id)` 精确删除，**没关注过也返回 `code=1`**（幂等）。\n- 不能对自己操作 → `业务异常： 不能取消关注自己`。\n- 目标用户不存在 → `业务异常： 用户不存在`。",
+        "operationId": "unfollowUser",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "目标用户 id（关注谁 / 取消关注谁）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "取消成功 / 不能取消关注自己 / 用户不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                },
+                "examples": {
+                  "ok": {
+                    "summary": "成功（没关注过也返回成功）",
+                    "value": {
+                      "code": 1,
+                      "data": null,
+                      "message": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录 / token 无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/following": {
+      "get": {
+        "tags": [
+          "用户 / User"
+        ],
+        "summary": "我关注的人（游标分页）",
+        "description": "返回**当前用户关注的人**（不是粉丝）。需要登录。按关注时间倒序（`order by uf.create_time desc, uf.id desc`）翻页，走 `idx_follower_time` 索引。\n\n- `cursorTime` 与 `cursorId` **必须同时传或同时不传**，只传一个返回 `业务异常： 游标参数不完整`。\n- 翻页：把响应里的 `nextCursor` / `nextCursorId` 原样作为下一页的 `cursorTime` / `cursorId`。\n- `size` 1~50，默认 20。\n- 每项的 `followTime` 是关注时间；`avatarUrl` 为 **10 分钟**预签名 URL，对方没设置头像时为 `null`。\n- 该接口**不走缓存**，每次都查库。\n- ⚠️ 没有对应的「粉丝列表」接口。",
+        "operationId": "listMyFollowing",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "description": "每页条数，1~50，默认 20"
+          },
+          {
+            "name": "cursorTime",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "上一页的 nextCursor（ISO 8601 带 T）"
+          },
+          {
+            "name": "cursorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "上一页的 nextCursorId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "游标分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultUserCursorPage"
+                },
+                "examples": {
+                  "firstPage": {
+                    "summary": "第一页",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "items": [
+                          {
+                            "id": 3,
+                            "nickname": "鲍勃",
+                            "avatarUrl": null,
+                            "followTime": "2026-10-04T18:20:11"
+                          }
+                        ],
+                        "hasMore": false,
+                        "nextCursor": "2026-10-04T18:20:11",
+                        "nextCursorId": 12
+                      },
+                      "message": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "游标不成对 / size 越界",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录 / token 无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/history": {
+      "get": {
+        "tags": [
+          "用户 / User"
+        ],
+        "summary": "浏览历史（分数游标分页）",
+        "description": "浏览历史列表。需要登录，`userId` 取自 JWT。**按浏览时间倒序**分页，用的是**分数游标**（score cursor），不是 `cursorTime + cursorId`。\n\n**响应形状是严格契约**（前端 `vidora-web/scripts/checkapi.mjs` 逐字段强断言，多一个字段都会 FAIL）：\n\n- `data` **恰好 3 个字段**：`items` / `hasMore` / `nextCursorScore`\n  —— **没有** `nextCursor`，也**没有** `nextCursorId`（与其他列表接口不同，别照抄）。\n- `items[i]` **恰好 4 个字段**：`id` / `title` / `coverUrl` / `viewTime`\n  —— **没有** `nickname`、`viewCount`、`duration`、`likeTime`、`favoriteTime`。\n- `viewTime` 是 `yyyy-MM-ddTHH:mm:ss` 字符串（**不是**数字、不含毫秒、不带 Z）。\n- `nextCursorScore` 是 `number | null`。\n\n**翻页方式**：把上一页返回的 `nextCursorScore` 原样作为下一页的 `cursorScore` 传入（它同时是\"游标\"和\"是否还有下一页\"的信号；`hasMore=false` 时 `nextCursorScore` 为 `null`）。\n\n**服务端行为**：\n\n- 数据源是 Redis 有序集合 `vidora:user:history:{userId}`：member = 视频 id，**score = 浏览时间的毫秒时间戳**。\n- 取数等价于 `ZREVRANGEBYSCORE key 0 (cursorScore-1) LIMIT size+1`，即传 `cursorScore` 时是**左开区间**（服务端内部做 `cursorScore - 1`）。\n- `viewTime` 直接由 score 还原（毫秒 → `LocalDateTime` 并 `withNano(0)`），所以格式天然是 `yyyy-MM-ddTHH:mm:ss`。\n- **已删除 / 已下架的视频会被跳过**（按 id 批量查库，查不到就 continue）。因此**一页可能少于 `size` 条**，即使 `hasMore=true`；服务端最多重试 3 轮来补足。\n- `coverUrl` 为 10 分钟预签名 URL；视频没有封面时为 `null`。\n- Redis 不可用时返回 `业务异常： 浏览记录暂时不可用，请稍后重试`（HTTP 200 + code=0），**不会**静默返回空列表。\n**写入时机（实测确认）**：带**有效 token** 调 `GET /video/{id}` 时才会记录（`VideoServiceImpl.recordHistory`，匿名请求不记）。数据结构是单调递增的有序集合：同一视频只保留一条，重复浏览会把它的时间刷新到最新。每个用户最多保留 **1000** 条（`HISTORY_MAX`），整个 key 的 TTL 是 **30 天**（`HISTORY_TTL`）。\n\n**实测样例**（带 token 依次看 3 个视频后）：\n\n```json\n{\"code\":1,\"data\":{\"items\":[{\"coverUrl\":\"http://localhost:9000/vidora-image/cover/1204.jpg?X-Amz-...\",\"id\":1231,\"title\":\"压测视频 1204\",\"viewTime\":\"2026-10-07T02:28:43\"}],\"hasMore\":true,\"nextCursorScore\":1791311323439},\"message\":\"success\"}\n```",
+        "operationId": "listMyHistory",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "description": "每页条数，1~50，默认 20"
+          },
+          {
+            "name": "cursorScore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "nullable": true
+            },
+            "description": "上一页返回的 nextCursorScore（浏览时间的毫秒时间戳）。不传 = 第一页"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "浏览历史分页结果（data 恰好 3 字段，item 恰好 4 字段）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultScoreCursorPage"
+                },
+                "examples": {
+                  "firstPage": {
+                    "summary": "第一页（还有下一页）",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "items": [
+                          {
+                            "id": 1,
+                            "title": "第一个视频",
+                            "coverUrl": "http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...",
+                            "viewTime": "2026-10-04T18:20:11"
+                          }
+                        ],
+                        "hasMore": true,
+                        "nextCursorScore": 1791044411000
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "empty": {
+                    "summary": "没有浏览记录",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "items": [],
+                        "hasMore": false,
+                        "nextCursorScore": null
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "lastPage": {
+                    "summary": "最后一页（nextCursorScore 为 null）",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "items": [
+                          {
+                            "id": 9,
+                            "title": "某视频",
+                            "coverUrl": null,
+                            "viewTime": "2026-10-04T12:00:00"
+                          }
+                        ],
+                        "hasMore": false,
+                        "nextCursorScore": null
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "redisDown": {
+                    "summary": "Redis 不可用",
+                    "value": {
+                      "code": 0,
+                      "data": null,
+                      "message": "业务异常： 浏览记录暂时不可用，请稍后重试"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "size 越界（1~50）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录 / token 无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video": {
+      "get": {
+        "tags": [
+          "视频 / Video"
+        ],
+        "summary": "视频列表（分页 + 模糊搜索 + 动态排序）",
+        "description": "公开视频列表，只返回 `status=2` 的记录。**可匿名访问。**\n\n- 分页：`page`≥1（默认 1）、`pageSize` 1~100（默认 10，超过 100 直接返回 400）。\n- 搜索：`keyword` 走 `title` / `introduction` 模糊匹配，字符集有白名单（中文、字母、数字、空格、`_`、`-`、`.`），最多 50 字符；不含白名单字符返回 400。\n- 排序：`orderBy` ∈ `create_time` / `like_count` / `view_count` / `favorite_count`，`order` ∈ `asc` / `desc`；**非法值不会报错，而是静默回落到默认的 `create_time desc`**。\n- ⚠️ `orderBy=view_count` 时 deep paging 无索引，页码很大时可能变慢。\n- 结果为 `PageResult`（`total` + `items`），`coverUrl` 为 10 分钟预签名 URL。\n- 结果缓存 30 分钟，键含全局版本号 `vidora:video:search:version`。",
+        "operationId": "pageVideo",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "**可选**。该接口允许匿名访问；带上有效 token 时才会返回个性化字段（liked / favorited / mine），匿名时这些字段恒为 0。注意：带了无效 token 不会 401，而是静默按匿名处理。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "页码，从 1 开始"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10
+            },
+            "description": "每页条数，1~100"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "description": "按标题/简介模糊搜索"
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "create_time",
+                "like_count",
+                "view_count",
+                "favorite_count"
+              ],
+              "default": "create_time"
+            },
+            "description": "排序字段，非法值静默回落默认"
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            },
+            "description": "排序方向，非法值静默回落默认"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVideoListPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "分页或关键字不合法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/mine": {
+      "get": {
+        "tags": [
+          "视频 / Video"
+        ],
+        "summary": "我的投稿列表",
+        "description": "当前登录用户的投稿，按当前用户过滤（`user_id` 取自 JWT，不接受客户端传入）。分页与排序参数同 `GET /video`。\n\n- `status` 支持 0/1/2/3/4 过滤（`0=上传中`、`2=已发布`），已修复此前 `status=0` 过滤被静默忽略的问题。\n- 结果缓存键 `vidora:video:myvideo:search:{userId}:...`，TTL 30 分钟。\n- ⚠️ 投稿链路（`/upload/video/init`、`/complete`、`/abort`）**不主动失效该缓存**，所以刚上传完的稿件最多 30 分钟内可能还看不到。",
+        "operationId": "pageMyVideo",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ]
+            },
+            "description": "视频状态。⚠️ 传 0 时过滤会失效"
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "create_time",
+                "like_count",
+                "view_count",
+                "favorite_count"
+              ],
+              "default": "create_time"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVideoListPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/feed": {
+      "get": {
+        "tags": [
+          "推荐流 / Feed"
+        ],
+        "summary": "首页推荐流（游标分页）",
+        "description": "按发布时间倒序的推荐流（`status=2`，`order by create_time desc, id desc`），用**复合游标**翻页：取响应里的 `nextCursor` / `nextCursorId` 原样作为下一页的 `cursorTime` / `cursorId`。\n\n- **可匿名访问。**\n- `sort` 只支持 `latest`；传 `hot` 会返回 `业务异常： 推荐流暂未上线`（HTTP 200 + code=0）。传其他值返回 400（`sort 参数非法`）。\n- `cursorTime` 与 `cursorId` 必须成对出现，否则返回 `业务异常： 游标参数不完整`。\n- `size` 1~50，默认 20。\n- 结果缓存 5 分钟，键 `vidora:video:feed:{sort}:{cursor}:{size}`；封面为 10 分钟预签名 URL。",
+        "operationId": "getVideoFeed",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "**可选**。该接口允许匿名访问；带上有效 token 时才会返回个性化字段（liked / favorited / mine），匿名时这些字段恒为 0。注意：带了无效 token 不会 401，而是静默按匿名处理。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "latest",
+                "hot"
+              ],
+              "default": "latest"
+            },
+            "description": "排序方式，目前只有 latest 可用"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursorTime",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "上一页的 nextCursor（ISO 8601，带 T）"
+          },
+          {
+            "name": "cursorScore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "热榜游标，预留字段，当前不生效"
+          },
+          {
+            "name": "cursorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "上一页的 nextCursorId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "游标分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVideoCursorPage"
+                },
+                "examples": {
+                  "firstPage": {
+                    "summary": "第一页",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "items": [
+                          {
+                            "id": 9876,
+                            "title": "压测视频 9849",
+                            "coverUrl": "http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...",
+                            "duration": 600,
+                            "viewCount": 12,
+                            "createTime": "2026-10-04T12:00:00",
+                            "nickName": "小李"
+                          }
+                        ],
+                        "hasMore": true,
+                        "nextCursor": "2026-10-04T12:00:00",
+                        "nextCursorId": 9876
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "hotNotImplemented": {
+                    "summary": "sort=hot（未实现）",
+                    "value": {
+                      "code": 0,
+                      "data": null,
+                      "message": "业务异常： 推荐流暂未上线"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "sort 非法 / size 越界",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/{id}": {
+      "get": {
+        "tags": [
+          "视频 / Video"
+        ],
+        "summary": "视频详情（播放量自增）",
+        "description": "**可匿名访问**，但**这个 GET 有写副作用**：每次调用都会让该视频的播放量 +1（Redis `vidora:video:play:{id}` 自增，后台每 30 秒刷回 `video.view_count`）。\n\n- 只能取到 `status=2` 的视频，其他状态与不存在的 id 都返回 `业务异常： 视频不存在`。\n- 带 token 时会额外返回 `liked` / `favorited`（1/0）；匿名时两者恒为 0。\n- ⚠️ 播放量无去重，脚本可无限刷；且 `orderBy=view_count` 排序时能把自己刷上榜首。\n- ⚠️ **Redis 不可达时该接口返回 500**，其余接口会正常降级。\n- 详情缓存 2 小时；`coverUrl`/`creatorCoverUrl` 30 分钟、`videoUrl` 100 分钟预签名。",
+        "operationId": "getVideoById",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "**可选**。该接口允许匿名访问；带上有效 token 时才会返回个性化字段（liked / favorited / mine），匿名时这些字段恒为 0。注意：带了无效 token 不会 401，而是静默按匿名处理。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "视频 id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "视频详情 / 视频不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVideoVo"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "id": 1,
+                        "title": "第一个视频",
+                        "introduction": "简介",
+                        "coverUrl": "http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...",
+                        "videoUrl": "http://localhost:9000/vidora-video/v/01.mp4?X-Amz-...",
+                        "duration": 600,
+                        "viewCount": 1159947,
+                        "likeCount": 1,
+                        "favoriteCount": 0,
+                        "createTime": "2026-08-01T10:00:00",
+                        "nickName": "小李",
+                        "creatorCoverUrl": null,
+                        "liked": 1,
+                        "favorited": 0
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "notFound": {
+                    "summary": "视频不存在",
+                    "value": {
+                      "code": 0,
+                      "data": null,
+                      "message": "业务异常： 视频不存在"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id 不是数字（`参数 id 类型不正确`）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Redis 不可用时的兜底 500",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/{id}/like": {
+      "post": {
+        "tags": [
+          "互动 · 点赞 / Like"
+        ],
+        "summary": "点赞视频",
+        "description": "幂等：`video_like` 上有 `uk_video_user(video_id,user_id)`，插入用 `INSERT IGNORE ... ON DUPLICATE KEY UPDATE id=id`，重复点赞不会重复计数、也仍返回 `code=1`。\n\n- `user_id` 取自 JWT，客户端无法伪造。\n- 会**校验视频是否存在**（不存在 → `业务异常： 视频不存在`），但**不校验 `status`**：`status=4`（已下架）的视频只要行还在就仍可点赞。\n- 点赞数不是实时落库的：先写 Redis 脏集合 `vidora:video:like_dirty`，后台定时刷回 `video.like_count`。",
+        "operationId": "likeVideo",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "点赞成功（重复点赞也返回成功）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "互动 · 点赞 / Like"
+        ],
+        "summary": "取消点赞",
+        "description": "幂等：没点过赞也返回 `code=1`。**不校验视频是否存在。**",
+        "operationId": "unlikeVideo",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "取消成功（未点赞也返回成功）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/{id}/favorite": {
+      "post": {
+        "tags": [
+          "互动 · 收藏 / Favorite"
+        ],
+        "summary": "收藏视频",
+        "description": "幂等：`video_favorite` 上有 `uk_video_user(video_id,user_id)`，插入用 `INSERT IGNORE ... ON DUPLICATE KEY UPDATE id=id`，重复收藏不重复计数。\n\n- 与点赞一致，**会校验视频是否存在**（`findById` → 不存在则 `业务异常： 视频不存在`）；同样**不校验 `status`**，已下架的视频只要行还在就能被收藏。\n- 收藏数先写 Redis 脏集合 `vidora:video:favorite_dirty`，后台定时刷回 `video.favorite_count`。\n- 收藏状态（详情接口的 `favorited` 字段）用独立缓存键 `vidora:video:favorite_users:{id}`，**与点赞的 `vidora:video:like_users:{id}` 互不影响**；缓存未命中时回源 `video_favorite` 表。",
+        "operationId": "favoriteVideo",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "收藏成功 / 视频不存在（看 code）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "互动 · 收藏 / Favorite"
+        ],
+        "summary": "取消收藏",
+        "description": "幂等：没收藏过也返回 `code=1`。**不校验视频是否存在。**",
+        "operationId": "unfavoriteVideo",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "取消成功（未收藏也返回成功）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/{id}/comment": {
+      "post": {
+        "tags": [
+          "互动 · 评论 / Comment"
+        ],
+        "summary": "发表评论",
+        "description": "给视频发评论。需要登录，`user_id` 取自 JWT。\n\n- 会校验视频存在（用的是不带 `status` 过滤的 `findById`，所以**上传中/已下架的视频也能被评论**），不存在返回 `业务异常： 视频不存在`。\n- `content` 必填，1~500 字符（超长返回 **400**）。\n- 写入后**不会失效评论列表缓存**，紧接着查列表可能看不到刚发的评论（最长 30 分钟）。",
+        "operationId": "addComment",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "视频 id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentCreateDto"
+              },
+              "examples": {
+                "normal": {
+                  "summary": "正常评论",
+                  "value": {
+                    "content": "这个视频讲得很清楚"
+                  }
+                },
+                "empty": {
+                  "summary": "空内容（预期 400）",
+                  "value": {
+                    "content": ""
+                  }
+                },
+                "tooLong": {
+                  "summary": "501 字（预期 400）",
+                  "value": {
+                    "content": "xxxxxxxxxx...(501 个字符)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "发表成功 / 视频不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "内容为空或超长",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "互动 · 评论 / Comment"
+        ],
+        "summary": "评论列表（复合游标分页）",
+        "description": "按 `create_time desc, id desc` 排序，用**复合游标**（`cursorTime` + `cursorId`）翻页，不需要 offset，深翻页性能稳定。\n\n- **可匿名访问**；匿名时每条评论的 `mine` 恒为 0，带 token 时自己发的评论 `mine=1`。\n- 不传游标 = 第一页；翻页把上一页响应的 `nextCursor` / `nextCursorId` 原样传回 `cursorTime` / `cursorId`。\n- `size` 1~100，默认 20。**`cursorTime` 必须是 ISO 8601 带 `T` 的格式**（`2026-10-04T16:52:51`）；用空格分隔会返回 400。\n- ⚠️ `?size=`（空值）会让该接口 **500**；不传该参数则用默认值 20，正常（见顶层「已知问题 3」）。\n- ⚠️ 不校验视频是否存在：不存在的视频返回 `code=1` + 空列表（见顶层「已知问题 1」）。\n- ⚠️ 缓存键 `vidora:video:comments:{version}:{videoId}:{cursorId}` **不含 `size` 和 `cursorTime`**：同一个 `cursorId` 先请求 `size=1` 再请求 `size=20` 会命中前者的缓存（见顶层「已知问题 4」）。\n- `avatarUrl` 为 30 分钟预签名 URL。",
+        "operationId": "listComments",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "**可选**。该接口允许匿名访问；带上有效 token 时才会返回个性化字段（liked / favorited / mine），匿名时这些字段恒为 0。注意：带了无效 token 不会 401，而是静默按匿名处理。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "视频 id"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "每页条数，1~100"
+          },
+          {
+            "name": "cursorTime",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "上一页的 nextCursor，ISO 8601 带 T"
+          },
+          {
+            "name": "cursorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "上一页的 nextCursorId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "评论分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultCommentCursorPage"
+                },
+                "examples": {
+                  "firstPage": {
+                    "summary": "第一页",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "items": [
+                          {
+                            "id": 2441893,
+                            "content": "测试评论",
+                            "createTime": "2026-10-04T16:52:51",
+                            "nickName": "小李",
+                            "avatarUrl": null,
+                            "mine": 0
+                          }
+                        ],
+                        "hasMore": true,
+                        "nextCursor": "2026-10-04T16:52:51",
+                        "nextCursorId": 2441893
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "page2": {
+                    "summary": "第二页（用上一页的 nextCursor/nextCursorId）",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "items": [],
+                        "hasMore": false,
+                        "nextCursor": null,
+                        "nextCursorId": null
+                      },
+                      "message": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "size 越界 / cursorTime 格式不对",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "?size= 空值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/{id}/comment/{commentId}": {
+      "delete": {
+        "tags": [
+          "互动 · 评论 / Comment"
+        ],
+        "summary": "删除评论（只能删自己的）",
+        "description": "需要登录。服务端先用 `(commentId, videoId)` 查出评论作者，再与 JWT 里的用户比对：\n\n- 不是自己的 → `业务异常： 无权限删除`\n- 评论不存在 → `业务异常： 评论不存在`\n- 但两者都返回 **HTTP 200**，且 message 不同，可用于侧信道枚举评论 id 是否存在。\n\n⚠️ 删除 SQL 只按 `id` 删，不带 `video_id` 条件（`video_id` 仅用于上面的归属查询）；且不检查影响行数。删除后会 INCR 评论列表的版本号，使该视频的评论缓存整体失效。",
+        "operationId": "deleteComment",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "视频 id"
+          },
+          {
+            "name": "commentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "评论 id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功 / 无权限 / 评论不存在（看 code 与 message）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload/video": {
+      "post": {
+        "tags": [
+          "上传 · 普通 / Simple upload"
+        ],
+        "summary": "上传视频文件（小文件直传）",
+        "description": "同步上传单个文件到 `vidora-video` 桶，**只返回 object key，不落库**。\n\n- 表单字段名必须是 **`file`**。\n- 扩展名白名单：视频类型；大小上限 **100MB**（`UploadScene.VIDEO`）。\n- 类型不支持返回 **415**，超限返回 **413**，都是 `上传失败： ...` 前缀。\n- 大文件请改用分片上传 `/upload/video/init` + `/part` + `/complete`。",
+        "operationId": "uploadVideoFile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "视频文件"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "返回 object key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                },
+                "examples": {
+                  "ok": {
+                    "value": {
+                      "code": 1,
+                      "data": "2026/10/04/3fac8b1c-d158-4249-a27f-6e56accda5d2.mp4",
+                      "message": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "文件过大",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "类型不支持",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          }
+        ]
+      }
+    },
+    "/upload/image": {
+      "post": {
+        "tags": [
+          "上传 · 普通 / Simple upload"
+        ],
+        "summary": "上传图片（封面 / 头像）",
+        "description": "上传图片到 `vidora-image` 桶，返回 object key。通常把返回的 key 作为 `POST /upload/video/init` 的 `coverKey`。\n\n- 表单字段：`file`（必填）、`scene`（必填：`cover` 上限 50MB / `avatar` 上限 20MB）。\n- 扩展名白名单：图片类型。⚠️ `scene=video` 也能通过校验，会把视频扩展名的文件写进**图片桶**。",
+        "operationId": "uploadImageFile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "scene"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "scene": {
+                    "type": "string",
+                    "enum": [
+                      "cover",
+                      "avatar"
+                    ],
+                    "description": "上传场景，决定目录与大小上限"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "返回 object key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "文件过大",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "类型不支持",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          }
+        ]
+      }
+    },
+    "/upload/video/init": {
+      "post": {
+        "tags": [
+          "上传 · 分片 / Multipart upload"
+        ],
+        "summary": "初始化分片上传（★同时创建视频记录）",
+        "description": "分片上传的第一步，也是**投稿的入口**：\n\n1. 按 `fileHash` 查是否已有可复用的对象（秒传）；\n2. 查当前用户是否有同 hash 的 `status=0` 中断记录（断点续传）；\n3. 都不满足则新建 S3 Multipart Upload，并**直接往 `video` 表插入一条 `status=0` 的记录**（旧版的 `POST /video` 已删除）。\n\n`data.mode` 的取值：\n- `instant` —— 秒传命中：库里已有相同 `fileHash` 且 `status=2` 的视频，直接复用它的 object key，**不需要再传分片，直接调 `/complete`**。\n- `resume` —— 断点续传：复用当前用户之前中断的同 hash 记录。`uploadedParts` 列出已成功上传的分片号，**只补传缺失的分片**。\n- `new` —— 全新上传。`uploadedParts` 为空。\n\n`data.id` 是视频 id，后续 `part` / `complete` / `abort` 都用它作为 `id` 参数。\n`data.partSize` 是服务端建议的分片大小（5242880 = 5MB），**除最后一片外每片不能小于它**。\n\n**参数校验（本版已补齐）**：`fileSize` ≤ 0 → **HTTP 400「文件大小非法」**；`fileSize` 超过 `UploadScene.VIDEO` 的 100MB 上限 → **HTTP 413「文件太大」**；声明的大小会落库到 `declared_size`，续传时与首次声明不一致会报 `业务异常： 文件大小与首次声明不一致，请重新上传`。\n\n⚠️ 秒传不区分用户：`fileHash` 完全由客户端提供、服务端不重算，且 `findReusableByHash` 不带 user 过滤，知道某个公开视频文件 MD5 的登录用户即可触发秒传复用他人对象（见顶层「已知问题 5」）。",
+        "operationId": "initMultipartUpload",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitUploadDto"
+              },
+              "examples": {
+                "newUpload": {
+                  "summary": "全新上传",
+                  "value": {
+                    "title": "我的第一个视频",
+                    "originalFilename": "demo.mp4",
+                    "fileSize": 104857600,
+                    "contentType": "video/mp4",
+                    "duration": 120,
+                    "coverKey": "cover/2026/10/04/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.jpg",
+                    "introduction": "简介",
+                    "fileHash": "d41d8cd98f00b204e9800998ecf8427e"
+                  }
+                },
+                "missingField": {
+                  "summary": "缺字段（预期 400）",
+                  "value": {
+                    "title": "x"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传会话信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultInitUploadVo"
+                },
+                "examples": {
+                  "new": {
+                    "summary": "全新上传",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "id": 16413,
+                        "videoKey": "2026/10/04/3fac8b1c-d158-4249-a27f-6e56accda5d2.mp4",
+                        "uploadId": "ZjFmOTgzNzctYWFlZS00ZGM0LWIwYmUtMzdmZGE0OTRkMGM4...",
+                        "partSize": 5242880,
+                        "uploadedParts": [],
+                        "mode": "new"
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "resume": {
+                    "summary": "断点续传（已传过第 1 片）",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "id": 16413,
+                        "videoKey": "2026/10/04/3fac8b1c-....mp4",
+                        "uploadId": "ZjFmOTgzNzct...",
+                        "partSize": 5242880,
+                        "uploadedParts": [
+                          1
+                        ],
+                        "mode": "resume"
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "instant": {
+                    "summary": "秒传命中",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "id": 16414,
+                        "videoKey": "2026/09/30/existing-file.mp4",
+                        "uploadId": null,
+                        "partSize": 5242880,
+                        "uploadedParts": [],
+                        "mode": "instant"
+                      },
+                      "message": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "必填字段缺失",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          }
+        ]
+      }
+    },
+    "/upload/video/part": {
+      "post": {
+        "tags": [
+          "上传 · 分片 / Multipart upload"
+        ],
+        "summary": "上传一个分片",
+        "description": "把文件按 `partSize` 切片后逐片上传。返回该片的 `etag`。\n\n- **form-data 参数**：`file`（分片内容）、`partNumber`（从 1 开始）、`id`（init 返回的视频 id）。\n- 除最后一片外，每片必须 ≥ 5MB（S3 限制）。\n- 只能操作自己创建的上传会话（服务端会校验归属），拿别人的 `id` 会返回 `业务异常： 无权限上传`。\n- ⚠️ 服务端**不校验**分片大小上限、累计大小与 `partNumber` 范围，可被用来无限灌存储。\n- 传完后调 `/upload/video/complete` 合并。",
+        "operationId": "uploadPart",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "partNumber",
+                  "id"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "分片内容（≥5MB，最后一片除外）"
+                  },
+                  "partNumber": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "分片号，从 1 开始"
+                  },
+                  "id": {
+                    "type": "integer",
+                    "format": "int64",
+                    "description": "init 返回的视频 id"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "分片上传成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultPartVo"
+                },
+                "examples": {
+                  "ok": {
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "partNumber": 1,
+                        "etag": "\"b6d81b360a5672d80c27430f39153e2c\"",
+                        "size": 5242880
+                      },
+                      "message": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "会话已失效（NoSuchUpload）等",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          }
+        ]
+      }
+    },
+    "/upload/video/complete": {
+      "post": {
+        "tags": [
+          "上传 · 分片 / Multipart upload"
+        ],
+        "summary": "合并分片，完成上传（视频转为可播放）",
+        "description": "服务端用 S3 `listParts` 取真实已上传的分片并合并，然后把视频置为 `status=2`（可播放）并清空 `upload_id`。\n\n**请求参数只有 `id`（query 参数）** —— 上一版需要额外传 JSON 分片数组，现在**不需要了**。\n\n- `id` 必须是当前用户自己、且处于 `status=0` 的上传会话，否则 `业务异常： 无权限上传` / `上传会话已失效`。\n- 服务端会校验已上传分片数与 `partSize` 是否匹配，不匹配返回上传失败。\n- ⚠️ 非幂等：如果 S3 已合并成功但后续写库失败，记录会永久卡在 `status=0`，重试会因 `NoSuchUpload` 一直失败，最终被 24 小时清理任务删掉。\n\n完成后再调 `GET /video/{id}` 即可看到 `videoUrl`（100 分钟预签名）。",
+        "operationId": "completeMultipartUpload",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "视频 id（init 返回的 data.id）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "合并成功 / 无权限 / 会话失效（看 code）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "S3 合并异常",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload/video/abort": {
+      "post": {
+        "tags": [
+          "上传 · 分片 / Multipart upload"
+        ],
+        "summary": "中断上传并清理",
+        "description": "取消 S3 Multipart Upload 并**删除 `status=0` 的视频记录**。用户取消上传、或前端检测到上传失败时调用。\n\n- `id` 走 query 参数。\n- 只能操作自己的会话；非 `status=0` 的记录会提前返回（不会误删已发布的视频）。\n- 幂等性一般：重复调用会因记录已删除而返回上传失败类提示。\n- 无人调用时，后台每天凌晨 3 点会清理 `status=0` 且创建超过 24 小时的上传记录（⚠️ 判据是 `create_time` 而不是最后活跃时间，慢慢传的用户可能在续传时发现会话已被清掉）。",
+        "operationId": "abortMultipartUpload",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "视频 id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已中断清理",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test": {
+      "get": {
+        "tags": [
+          "探针 / Test"
+        ],
+        "summary": "探针：返回固定列表",
+        "description": "开发期探针，返回 `[\"a\",\"b\",\"c\"]`。需要登录（未在拦截器白名单里）。⚠️ 该接口仍留在生产代码中。",
+        "operationId": "testEchoList",
+        "responses": {
+          "200": {
+            "description": "固定列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultStringList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          }
+        ]
+      }
+    },
+    "/test/redis": {
+      "get": {
+        "tags": [
+          "探针 / Test"
+        ],
+        "summary": "探针：读写 Redis",
+        "description": "往 Redis 写 `vidora:test:hello`（TTL 10 分钟）并回显值与剩余时间。⚠️ **一个 GET 接口带写副作用**，且会回显内部键值，建议上线前删除该 Controller。",
+        "operationId": "testRedis",
+        "responses": {
+          "200": {
+            "description": "回显值与 TTL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                },
+                "examples": {
+                  "ok": {
+                    "value": {
+                      "code": 1,
+                      "data": "值vidora/剩余时间599",
+                      "message": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          }
+        ]
+      }
+    },
+    "/test/echo": {
+      "post": {
+        "tags": [
+          "探针 / Test"
+        ],
+        "summary": "探针：回显参数",
+        "description": "校验 `value` 非空后返回固定 `success`。参数走 **query string**（不是 JSON body）。",
+        "operationId": "testEcho",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "登录接口返回的 data.token。已在 Apifox 环境变量 token 中自动保存，此处预填好 `Bearer {{token}}`，无需手改。也可以改用旧的 `token: <裸 jwt>` 自定义头。",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer {{token}}"
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "不能为空白"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "固定返回 success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "value 为空白",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultString"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "**服务端推荐的鉴权方式**：`Authorization: Bearer <登录返回的 data.token>`。本文件已把它作为**显式请求头参数**预填到每个接口上（值 `Bearer {{token}}`），因此**无需**在 Apifox 的「Auth」里再配一次 —— 重复配置会产生两个 Authorization 头，被 Tomcat 合并后全部 401。"
+      },
+      "tokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "token",
+        "description": "旧的自定义请求头，服务端仍兼容：`token: <裸 jwt>`（**不要**加 `Bearer ` 前缀）。与 Authorization 二选一即可，服务端优先看 `Authorization`。"
+      }
+    },
+    "schemas": {
+      "ResultVoid": {
+        "type": "object",
+        "description": "统一返回信封（无数据）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "1 = 成功，0 = 失败",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "description": "恒为 null"
+          },
+          "message": {
+            "type": "string",
+            "example": "success"
+          }
+        }
+      },
+      "ResultString": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResultStringList": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResultUserLoginResult": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserLoginResult"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResultVideoVo": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VideoVo"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResultVideoListPage": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PageResult_VideoListItem"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResultVideoCursorPage": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CursorPage_VideoListItem"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResultCommentCursorPage": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PageCommentResult_CommentVo"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResultInitUploadVo": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InitUploadVo"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResultPartVo": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PartVo"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "UserRegisterDto": {
+        "type": "object",
+        "required": [
+          "username",
+          "password",
+          "nickname"
+        ],
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "登录账号，唯一。⚠️ 无长度校验，超过 20 字符会 500",
+            "example": "apitest01"
+          },
+          "password": {
+            "type": "string",
+            "description": "密码，BCrypt 加密入库。⚠️ 超过 72 字节会 500",
+            "example": "Passw0rd!"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "昵称。⚠️ 无长度校验，超过 20 字符会 500",
+            "example": "Api Test"
+          },
+          "avatar": {
+            "type": "string",
+            "nullable": true,
+            "description": "头像 object key，可为空"
+          }
+        }
+      },
+      "UserLoginDTo": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "username": {
+            "type": "string",
+            "example": "xiaoli"
+          },
+          "password": {
+            "type": "string",
+            "example": "123456"
+          }
+        }
+      },
+      "UserLoginResult": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "JWT，12 小时有效"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "头像预签名 URL"
+          }
+        }
+      },
+      "VideoVo": {
+        "type": "object",
+        "description": "视频详情",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "introduction": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "封面预签名 URL，30 分钟"
+          },
+          "videoUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "视频预签名 URL，100 分钟"
+          },
+          "duration": {
+            "type": "integer"
+          },
+          "viewCount": {
+            "type": "integer",
+            "description": "播放量（本次请求已 +1）"
+          },
+          "likeCount": {
+            "type": "integer"
+          },
+          "favoriteCount": {
+            "type": "integer"
+          },
+          "createTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nickName": {
+            "type": "string",
+            "description": "作者昵称"
+          },
+          "creatorCoverUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "作者头像预签名 URL，30 分钟"
+          },
+          "liked": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "当前用户是否点赞（1/0）。匿名请求恒为 0。"
+          },
+          "favorited": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "当前用户是否收藏（1/0）。匿名请求恒为 0。"
+          }
+        }
+      },
+      "VideoListItem": {
+        "type": "object",
+        "description": "列表项（列表接口不返回 liked/favorited）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "封面预签名 URL，10 分钟"
+          },
+          "duration": {
+            "type": "integer"
+          },
+          "viewCount": {
+            "type": "integer"
+          },
+          "createTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nickName": {
+            "type": "string"
+          }
+        }
+      },
+      "PageResult_VideoListItem": {
+        "type": "object",
+        "description": "offset 分页结果",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "总条数"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoListItem"
+            }
+          }
+        }
+      },
+      "CursorPage_VideoListItem": {
+        "type": "object",
+        "description": "游标分页结果。翻页：把 nextCursor / nextCursorId 原样作为下一页的 cursorTime / cursorId",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoListItem"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "下一页的 cursorTime；无更多时为 null"
+          },
+          "nextCursorId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "下一页的 cursorId"
+          }
+        }
+      },
+      "CommentVo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "content": {
+            "type": "string",
+            "description": "评论正文，1~500 字符"
+          },
+          "createTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nickName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "头像预签名 URL，30 分钟"
+          },
+          "mine": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "1 = 当前登录用户发的；匿名请求恒为 0"
+          }
+        }
+      },
+      "PageCommentResult_CommentVo": {
+        "type": "object",
+        "description": "评论游标分页结果",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommentVo"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "nextCursorId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        }
+      },
+      "CommentCreateDto": {
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "评论内容，1~500 字符，不能为空白"
+          }
+        }
+      },
+      "InitUploadDto": {
+        "type": "object",
+        "required": [
+          "title",
+          "originalFilename",
+          "fileSize",
+          "contentType",
+          "duration",
+          "coverKey",
+          "fileHash"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "视频标题，不能为空白"
+          },
+          "originalFilename": {
+            "type": "string",
+            "description": "原始文件名，用于取扩展名做类型白名单"
+          },
+          "fileSize": {
+            "type": "integer",
+            "format": "int64",
+            "description": "文件总大小（字节）。⚠️ 只校验非空，负数/超大值也会被接受"
+          },
+          "contentType": {
+            "type": "string",
+            "description": "内容类型。服务端**不采纳**该值，实际 MIME 由扩展名推导"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "视频时长（秒）"
+          },
+          "coverKey": {
+            "type": "string",
+            "description": "封面 object key，由 POST /upload/image 上传后得到"
+          },
+          "introduction": {
+            "type": "string",
+            "nullable": true,
+            "description": "简介，可为空"
+          },
+          "fileHash": {
+            "type": "string",
+            "description": "文件 MD5，用于秒传/断点续传。⚠️ 服务端不重算、不校验格式"
+          }
+        }
+      },
+      "InitUploadVo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "视频 id，后续 part/complete/abort 都用它"
+          },
+          "videoKey": {
+            "type": "string",
+            "description": "对象键（服务端生成）"
+          },
+          "uploadId": {
+            "type": "string",
+            "nullable": true,
+            "description": "S3 Multipart UploadId；秒传时为 null"
+          },
+          "partSize": {
+            "type": "integer",
+            "description": "建议分片大小（5242880 = 5MB）"
+          },
+          "uploadedParts": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "已成功上传的分片号（断点续传时用来跳过）"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "instant",
+              "resume",
+              "new"
+            ],
+            "description": "instant=秒传；resume=断点续传；new=全新上传"
+          }
+        }
+      },
+      "PartVo": {
+        "type": "object",
+        "properties": {
+          "partNumber": {
+            "type": "integer",
+            "description": "分片号"
+          },
+          "etag": {
+            "type": "string",
+            "description": "S3 返回的分片 etag"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "分片大小"
+          }
+        }
+      },
+      "ResultUserMeVo": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserMeVo"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResultUserProfileVo": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileVo"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "UserMeVo": {
+        "type": "object",
+        "description": "当前登录用户信息",
+        "properties": {
+          "nickname": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "头像预签名 URL，10 分钟有效；未设置头像时为 null"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": "string",
+            "description": "登录账号"
+          }
+        }
+      },
+      "UserProfileVo": {
+        "type": "object",
+        "description": "修改资料后的用户信息",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "头像预签名 URL，10 分钟有效"
+          },
+          "nickname": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateProfileDto": {
+        "type": "object",
+        "description": "修改资料的入参。⚠️ 昵称与头像**至少要传一项**（跨字段 @AssertTrue 校验），两项都为空会返回 400",
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "昵称，最长 20 字，服务端会 trim。传空串或 null = 不改这一项"
+          },
+          "avatar": {
+            "type": "string",
+            "description": "头像 object key（来自 POST /upload/image?scene=avatar 的返回），**不是 URL**。传空串或 null = 不改这一项。⚠️ 无长度校验，DB 列 varchar(255)"
+          }
+        }
+      },
+      "ResultUserCursorPage": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CursorPage_UserListItem"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "CursorPage_UserListItem": {
+        "type": "object",
+        "description": "用户游标分页结果。翻页：把 nextCursor / nextCursorId 原样作为下一页的 cursorTime / cursorId",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserListItem"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "下一页的 cursorTime；无更多时为 null"
+          },
+          "nextCursorId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "下一页的 cursorId"
+          }
+        }
+      },
+      "UserListItem": {
+        "type": "object",
+        "description": "关注列表里的一项（用户维度，注意与 VideoListItem 区分）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "用户 id"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "头像预签名 URL，10 分钟有效；未设置头像时为 null"
+          },
+          "followTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "关注时间（= user_follow.create_time），列表按它倒序"
+          }
+        }
+      },
+      "ResultScoreCursorPage": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ScoreCursorPage_HistoryItem"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ScoreCursorPage_HistoryItem": {
+        "type": "object",
+        "description": "分数游标分页结果。⚠️ **恰好 3 个字段**（没有 nextCursor / nextCursorId）；nextCursorScore 既是翻页游标，也是\"还有下一页\"的信号",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryItem"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursorScore": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "下一页的 cursorScore（浏览时间毫秒戳）；hasMore=false 时为 null；**原样回传，不要加 1 或减 1**"
+          }
+        }
+      },
+      "HistoryItem": {
+        "type": "object",
+        "description": "浏览历史的一项。⚠️ **恰好 4 个字段**，前端 checkapi.mjs 强断言，不要加 nickname / viewCount / duration 等",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "视频 id"
+          },
+          "title": {
+            "type": "string"
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "封面预签名 URL，10 分钟；无封面时为 null"
+          },
+          "viewTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "浏览时间，`yyyy-MM-ddTHH:mm:ss` 字符串（由 Redis score 还原，已去纳秒）"
+          }
+        }
+      }
+    }
+  }
+}

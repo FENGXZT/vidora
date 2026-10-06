@@ -19,4 +19,7 @@ public class VideoListItem {
     private LocalDateTime createTime;   //创建时间
 
     private String nickName;            //发布者昵称
+
+    private LocalDateTime likeTime;      //点赞时间
+    private LocalDateTime favoriteTime;  //收藏时间
 }

@@ -27,4 +27,5 @@ public class VideoVo {
     private String creatorCoverUrl;     //创建者头像地址
 
     private Integer liked;              //是否点赞，1为点赞，0为未点赞
+    private Integer favorited;          //是否收藏，1为收藏，0为未收藏
 }

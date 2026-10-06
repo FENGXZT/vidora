@@ -2,14 +2,18 @@ package com.fxzt.vidora.util;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
-import org.springframework.data.redis.core.Cursor;
-import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -160,4 +164,65 @@ public class CacheHelper {
             return null;
         }
     }
+
+    public Long zAddMonotonicWithTtl(String key, String member, long score,int maxCount,  Duration ttl){
+        if (ttl == null || ttl.isZero() || ttl.isNegative()){
+            log.warn("TTL 非法，跳过写入：key={}, ttl={}", key, ttl);
+            return null;
+        }
+        if (maxCount <= 0){
+            log.warn("最大数量非法，跳过写入：key={}, maxCount={}", key, maxCount);
+            return null;
+        }
+        try{
+            DefaultRedisScript<String> script = new DefaultRedisScript<>(LUA_SCRIPT, String.class);
+            String result = redis.execute(script,
+                    Collections.singletonList(key),
+                    String.valueOf(score),
+                    member,
+                    String.valueOf(maxCount),
+                    String.valueOf(ttl.toSeconds()));
+            return result == null ? null : Long.parseLong(result);
+        }catch (DataAccessException e){
+            log.warn("ZSet 写入失败：key={}, member={}", key, member, e);
+            return null;
+        }catch (Exception e){
+            log.error("ZSet 写入失败(未知原因)：key={}, member={}", key, member, e);
+            return null;
+        }
+    }
+
+    public List<ScoredMember> zReverseRangeByScore(String key,double min, double max,int count){
+        try{
+            Set<ZSetOperations.TypedTuple<String>> tuples = redis.opsForZSet()
+                    .reverseRangeByScoreWithScores(key,min,max,0,count);
+            if (tuples == null) return List.of();
+            return tuples.stream()
+                    .map(t-> new ScoredMember(t.getValue(),
+                            t.getScore() == null ? 0 : t.getScore()))
+                    .sorted(Comparator.comparingDouble(ScoredMember::score).reversed())
+                    .toList();
+        }catch (DataAccessException e){
+            log.warn("ZSet 读取失败：key={}", key, e);
+            return null;        //redis故障返回null，方便区分
+        }catch (Exception e){
+            log.error("ZSet 读取失败(未知原因)：key={}", key, e);
+            return null;
+        }
+    }
+
+    public  record ScoredMember(String member, double score){}
+
+    private static final String LUA_SCRIPT = """
+            local top = redis.call('ZREVRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+            local score = tonumber(ARGV[1])
+            if top[2] ~= nil then
+                local max = math.floor(tonumber(top[2]))
+                if score <= max then score = max + 1 end
+            end
+            redis.call('ZADD', KEYS[1], score, ARGV[2])
+            redis.call('ZREMRANGEBYRANK', KEYS[1], 0, -tonumber(ARGV[3]) - 1)
+            redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]))
+            return tostring(score)
+            """;
 }

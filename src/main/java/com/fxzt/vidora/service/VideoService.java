@@ -48,4 +48,14 @@ public interface VideoService {
      * 获取推荐视频列表
      */
     CursorPage<VideoListItem> feedPage(FeedPageDto feedPageDto);
+
+    /**
+     * 收藏视频
+     */
+    void videoFavorite(Long id);
+
+    /**
+     * 取消收藏视频
+     */
+    void unfavorite(Long id);
 }

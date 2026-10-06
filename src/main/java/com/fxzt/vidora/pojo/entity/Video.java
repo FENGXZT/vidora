@@ -1,5 +1,6 @@
 package com.fxzt.vidora.pojo.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -36,5 +37,6 @@ public class Video {
     private String nickName;          //发布者昵称
     private String avatarKey;         //发布者头像
 
+    @JsonIgnore
     private Integer liked;           //是否点赞，1为点赞，0为未点赞
 }

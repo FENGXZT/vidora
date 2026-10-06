@@ -1,12 +1,12 @@
 package com.fxzt.vidora.pojo.vo;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@AllArgsConstructor
-@NoArgsConstructor
+@Builder
 public class UserLoginResult {
     private String token;
     private String nickname;

@@ -4,10 +4,14 @@ import com.fxzt.vidora.pojo.query.FeedPageDto;
 import com.fxzt.vidora.pojo.query.VideoMyPageDto;
 import com.fxzt.vidora.pojo.query.VideoPageDTo;
 
+import java.time.Duration;
 import java.time.ZoneId;
 
 public final class RedisKeys {
     private static final String PREFIX = "vidora:";
+
+    public static final int HISTORY_MAX = 1000;
+    public static final Duration HISTORY_TTL = Duration.ofDays(30);
 
     /**
      * 视频详情缓存key
@@ -46,14 +50,6 @@ public final class RedisKeys {
     }
 
     /**
-     * 视频搜索缓存key
-     * @return 缓存key
-     */
-    public static String videoSearchAll() {
-        return PREFIX + "video:search:*";
-    }
-
-    /**
      * 播放量计数缓存key
      * @param videoId 视频id
      * @return 缓存key
@@ -85,15 +81,6 @@ public final class RedisKeys {
      */
     public static String videoLikeUsers(Long videoId){
         return PREFIX + "video:like_users:" + videoId;
-    }
-
-    /**
-     * 视频点赞量计数缓存key
-     * @param videoId 视频id
-     * @return 缓存key
-     */
-    public static String videoLikeCount(Long videoId){
-        return PREFIX + "video:like_count:" + videoId;
     }
 
     /**
@@ -138,5 +125,25 @@ public final class RedisKeys {
                 : dto.getCursorTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 +"_"+dto.getCursorId();
         return PREFIX+"video:feed:"+dto.getSort()+":"+cursor+":"+dto.getSize();
+    }
+
+    /**
+     * 收藏更新标记缓存key
+     * @return 缓存key
+     */
+    public static String videoFavoriteUpdateFlag(){
+        return PREFIX + "video:favorite_dirty" ;
+    }
+
+    /** 视频收藏用户集合（Set，member = userId），用于 favorited 状态
+     * @param videoId 视频id
+     * @return 缓存key
+     */
+    public static String videoFavoriteUsers(Long videoId) {
+        return PREFIX + "video:favorite_users:" + videoId;
+    }
+
+    public static String userHistory(Long userId){
+        return PREFIX+"user:history:" + userId;
     }
 }

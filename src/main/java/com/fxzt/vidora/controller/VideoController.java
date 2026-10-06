@@ -103,4 +103,24 @@ public class VideoController {
         CursorPage<VideoListItem> videoList = videoService.feedPage(feedPageDto);
         return Result.success(videoList);
     }
+
+    /**
+     * 收藏视频
+     */
+    @PostMapping("/{id}/favorite")
+    public Result<Void> favorite(@PathVariable Long id){
+        log.debug("收藏视频，id{}", id);
+        videoService.videoFavorite(id);
+        return Result.success();
+    }
+
+    /**
+     * 取消收藏视频
+     */
+    @DeleteMapping("/{id}/favorite")
+    public Result<Void> unfavorite(@PathVariable Long id){
+        log.debug("取消收藏视频，id{}", id);
+        videoService.unfavorite(id);
+        return Result.success();
+    }
 }
