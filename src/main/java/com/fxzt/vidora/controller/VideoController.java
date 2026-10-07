@@ -98,10 +98,11 @@ public class VideoController {
     }
 
     @GetMapping("/feed")
-    public Result<CursorPage<VideoListItem>> feed(@Valid FeedPageDto feedPageDto){
-        log.debug("获取首页推荐流，参数{}", feedPageDto);
-        CursorPage<VideoListItem> videoList = videoService.feedPage(feedPageDto);
-        return Result.success(videoList);
+    public Result<Object> feed(@Valid FeedPageDto dto){
+        log.debug("获取首页推荐流，参数{}", dto);
+        return "hot".equals(dto.getSort())
+                ? Result.success(videoService.hotFeed(dto))
+                : Result.success(videoService.feedPage(dto));
     }
 
     /**

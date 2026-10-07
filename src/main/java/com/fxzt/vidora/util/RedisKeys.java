@@ -119,11 +119,18 @@ public final class RedisKeys {
      * @return 缓存 key
      */
     public static String videoFeed(FeedPageDto dto) {
-       /* feed 对所有人一样（无个性化）才能共享缓存；一旦按用户个性化，这个 key 必须加 userId 或不缓存*/
-        String cursor = dto.getCursorTime()==null
-                ? "first"
-                : dto.getCursorTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                +"_"+dto.getCursorId();
+        /** feed 对所有人一样（无个性化）才能共享缓存；一旦按用户个性化，这个 key 必须加 userId 或不缓存 */
+        String cursor = null;
+        if ("latest".equals(dto.getSort())){
+            cursor =dto.getCursorTime() == null
+                    ? "first"
+                    : dto.getCursorTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    +"_"+dto.getCursorId();
+        }else {
+            cursor = dto.getCursorScore() == null
+                    ? "first"
+                    : dto.getCursorScore() + "_" +dto.getCursorId();
+        }
         return PREFIX+"video:feed:"+dto.getSort()+":"+cursor+":"+dto.getSize();
     }
 

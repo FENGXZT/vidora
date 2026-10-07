@@ -1,58 +1,58 @@
 {
   "info": {
     "name": "Vidora API · 接口测试集合（由 openapi 生成）",
-    "_postman_id": "16cf12fa-9567-4a53-8711-3ede9f00c60d",
+    "_postman_id": "0fc7af9f-061c-4b93-8971-467a8176b483",
     "description": "Vidora · 视频投稿与播放平台 —— 接口测试集合（Postman v2.1 / Apifox 可直接导入）。\n\n> ⚠️ **本文件由 `docs/tools/gen-postman-collection.ps1` 从 `docs/vidora-openapi.json` 生成，请勿手改。**\n> 改接口请改 openapi 后重新生成；脚本会校验两份契约是否分叉（`-Check`）。\n\n## 使用顺序\n1. 先跑「01 · 认证 / Auth」里的**登录**：它会把返回的 JWT 自动写入集合变量 `token`，其余接口的 `Authorization: Bearer {{token}}` 依赖它。\n2. 需要路径参数的接口用集合变量：`videoId` / `userId` / `commentId`。\n3. 分片上传按 init → part → complete / abort 顺序执行。\n\n## 鉴权\n服务端**优先读 `Authorization: Bearer <jwt>`**，也兼容旧的 `token` 自定义头。\n4 个只读接口（`GET /video`、`/video/feed`、`/video/{id}`、`/video/{id}/comment`）允许匿名访问；\n带 token 时才会返回 `liked` / `favorited` / `mine` 等个性化字段。\n\n> ⚠️ 不要把 Apifox 的「Auth」再配一遍 —— 请求头里已经有 `Authorization: Bearer {{token}}`，\n> 重复配置会产生两个同名头，被 Tomcat 合并后全部 401。\n\n## 统一返回结构\n`{\"code\":1|0,\"data\":...,\"message\":\"...\"}`。`code=1` 成功、`code=0` 失败。\n**HTTP 状态码与 code 必须同时判断**：业务失败多为 `HTTP 200 + code=0`；\n参数校验/类型错误 400；未登录 401；路径不存在 404；方法不支持 405；上传 413/415；未预期异常 500。\n\n## 文件夹说明\n- `01`~`10`：按 openapi 的 tag 自动分组，与接口契约一一对应。\n- `90 · 回归 / 契约防线`：**手写**的回归用例，分两类 ——\n  **A 类**断言\"已经修好的行为\"以防退化，**B 类**复现\"当前仍然存在的缺陷\"。\n  这两类都会随代码修复而**过期**：修掉 B 类某条后，必须把它从 A/B 移走，\n  否则下一步读它的人会得出与事实相反的结论。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
-      "key": "baseUrl",
-      "type": "string",
       "value": "http://localhost:8080",
-      "description": "服务地址"
+      "key": "baseUrl",
+      "description": "服务地址",
+      "type": "string"
     },
     {
+      "value": "",
       "key": "token",
-      "type": "string",
-      "value": "",
-      "description": "★ 由 POST /user/login 的后置脚本自动写入，不要手填"
+      "description": "★ 由 POST /user/login 的后置脚本自动写入，不要手填",
+      "type": "string"
     },
     {
-      "key": "videoId",
-      "type": "string",
       "value": "1",
-      "description": "视频 id（路径参数 {id} 用）"
+      "key": "videoId",
+      "description": "视频 id（路径参数 {id} 用）",
+      "type": "string"
     },
     {
-      "key": "userId",
-      "type": "string",
       "value": "3",
-      "description": "用户 id（/user/{id}/follow 用）"
+      "key": "userId",
+      "description": "用户 id（/user/{id}/follow 用）",
+      "type": "string"
     },
     {
+      "value": "",
       "key": "commentId",
-      "type": "string",
-      "value": "",
-      "description": "评论 id（删除评论用，可先跑评论列表拿一个）"
+      "description": "评论 id（删除评论用，可先跑评论列表拿一个）",
+      "type": "string"
     },
     {
+      "value": "",
       "key": "coverKey",
-      "type": "string",
-      "value": "",
-      "description": "封面 object key（先跑 POST /upload/image?scene=cover）"
+      "description": "封面 object key（先跑 POST /upload/image?scene=cover）",
+      "type": "string"
     },
     {
+      "value": "",
       "key": "uploadId",
-      "type": "string",
-      "value": "",
-      "description": "init 返回的 uploadId（调试用）"
+      "description": "init 返回的 uploadId（调试用）",
+      "type": "string"
     },
     {
-      "key": "nextCursorScore",
-      "type": "string",
       "value": "",
-      "description": "浏览历史的分数游标（取自 GET /user/history 的 nextCursorScore）"
+      "key": "nextCursorScore",
+      "description": "浏览历史的分数游标（取自 GET /user/history 的 nextCursorScore）",
+      "type": "string"
     }
   ],
   "item": [
@@ -65,31 +65,31 @@
             "method": "POST",
             "header": [
               {
+                "value": "application/json",
                 "key": "Content-Type",
-                "type": "text",
-                "value": "application/json"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/register",
               "query": [],
+              "raw": "{{baseUrl}}/user/register",
               "path": [
                 "user",
                 "register"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "注册新用户。密码用 BCrypt 加密后入库（`$2a$10$` + 60 字符，自带盐）。\n\n- `username` 有唯一索引，重复注册返回 `业务异常： 该用户名已存在`（HTTP 200 + code=0）。\n- 校验：`username` / `password` / `nickname` 均不能为空白（`@NotBlank`），失败返回 **HTTP 400**。\n- ⚠️ 无长度校验：`username` 超过 20 字符（列宽 `varchar(20)`）会触发 MySQL `Data too long` → **500**。\n- ⚠️ 密码超过 **72 字节**（例如 25 个汉字）时 BCrypt 抛异常 → **500**；建议客户端自行限制。\n- ⚠️ 不做 trim：`\" bob\"` 与 `\"bob\"` 是两个不同账号。\n- ⚠️ 无验证码/限流，可被脚本批量注册。",
             "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"username\": \"apitest01\",\r\n  \"password\": \"Passw0rd!\",\r\n  \"nickname\": \"Api Test\",\r\n  \"avatar\": null\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
-              },
-              "mode": "raw",
-              "raw": "{\r\n  \"username\": \"apitest01\",\r\n  \"password\": \"Passw0rd!\",\r\n  \"nickname\": \"Api Test\",\r\n  \"avatar\": null\r\n}"
+              }
             }
           }
         },
@@ -99,69 +99,70 @@
             "method": "POST",
             "header": [
               {
+                "value": "application/json",
                 "key": "Content-Type",
-                "type": "text",
-                "value": "application/json"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/login",
               "query": [],
+              "raw": "{{baseUrl}}/user/login",
               "path": [
                 "user",
                 "login"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "登录成功返回 `data.token`，**12 小时有效**。后续请求放进 `Authorization: Bearer <token>`（推荐）或 `token: <token>`。\n\n**在 Apifox 里请给本接口加一个「后置操作」，把 token 自动写入环境变量**，这样其余接口预填的 `Bearer {{token}}` 就能直接生效：\n- **提取变量**：来源 `Response Body`，表达式 `$.data.token`，变量名 `token`，作用域选**环境变量**。\n- 或**自定义脚本**：\n  ```javascript\n  const j = pm.response.json();\n  if (j && j.code === 1 && j.data && j.data.token) {\n    pm.environment.set(\"token\", j.data.token);\n    console.log(\"token 已写入环境变量，长度 = \" + j.data.token.length);\n  }\n  ```\n\n- 用户名不存在与密码错误返回**相同的**提示 `业务异常： 用户名或密码错误`，不泄露账号是否存在。\n- ⚠️ 无失败次数限制与验证码，可被字典爆破。\n- ⚠️ 无登出接口：token 签发后 12 小时内无法主动作废。\n- ℹ️ 本地测试账号（`docs/test-data.sql` 建的那批）：`testuser` / `alice` / `bob` / `xiaowang` / `xiaoli` / `xiaozhang`，口令均为 `123456`。",
             "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"username\": \"xiaoli\",\r\n  \"password\": \"123456\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
-              },
-              "mode": "raw",
-              "raw": "{\r\n  \"username\": \"xiaoli\",\r\n  \"password\": \"123456\"\r\n}"
+              }
             }
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"token\": \"eyJhbGciOiJIUzI1NiJ9.xxx.yyy\",\r\n    \"nickname\": \"小李\",\r\n    \"id\": 5,\r\n    \"avatarUrl\": null\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
-                "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/user/login"
-                },
-                "method": "POST",
                 "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"username\": \"xiaoli\",\r\n  \"password\": \"123456\"\r\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
-                  },
-                  "mode": "raw",
-                  "raw": "{\r\n  \"username\": \"xiaoli\",\r\n  \"password\": \"123456\"\r\n}"
+                  }
+                },
+                "method": "POST",
+                "url": {
+                  "raw": "{{baseUrl}}/user/login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ]
                 },
                 "header": [
                   {
+                    "value": "application/json",
                     "key": "Content-Type",
-                    "type": "text",
-                    "value": "application/json"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "成功",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"token\": \"eyJhbGciOiJIUzI1NiJ9.xxx.yyy\",\r\n    \"nickname\": \"小李\",\r\n    \"id\": 5,\r\n    \"avatarUrl\": null\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ],
           "event": [
             {
+              "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
@@ -176,8 +177,7 @@
                   "  pm.test('登录应返回 token', () => pm.expect.fail('未拿到 data.token：' + JSON.stringify(j)));",
                   "}"
                 ]
-              },
-              "listen": "test"
+              }
             }
           ]
         }
@@ -192,48 +192,48 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/me",
               "query": [],
+              "raw": "{{baseUrl}}/user/me",
               "path": [
                 "user",
                 "me"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "从 JWT 里的 `id` 查库返回当前登录用户的信息。**需要登录。**\n\n- `avatarUrl` 是头像的预签名 URL，有效期 **10 分钟**；没设置头像时为 `null`。\n- `username` 是登录账号（唯一），`nickname` 是昵称（会展示在评论区与视频作者处）。\n- 每次都查库，**不缓存**；但昵称被修改后搜索引擎的版本号会被 bump（见 `PUT /user/profile`）。\n- ⚠️ 如果 token 还在有效期内、但对应的用户行已被删除，返回 **HTTP 401 + `权限异常： 登录已过期`**（而不是 500）。"
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"nickname\": \"小李\",\r\n    \"avatarUrl\": \"http://localhost:9000/vidora-image/avatar/2026/10/04/xxx.jpg?X-Amz-...\",\r\n    \"id\": 5,\r\n    \"username\": \"xiaoli\"\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
+                "body": null,
+                "method": "GET",
                 "url": {
+                  "raw": "{{baseUrl}}/user/me",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/user/me"
+                  ]
                 },
-                "method": "GET",
-                "body": null,
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "成功",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"nickname\": \"小李\",\r\n    \"avatarUrl\": \"http://localhost:9000/vidora-image/avatar/2026/10/04/xxx.jpg?X-Amz-...\",\r\n    \"id\": 5,\r\n    \"username\": \"xiaoli\"\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -243,75 +243,75 @@
             "method": "PUT",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               },
               {
+                "value": "application/json",
                 "key": "Content-Type",
-                "type": "text",
-                "value": "application/json"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/profile",
               "query": [],
+              "raw": "{{baseUrl}}/user/profile",
               "path": [
                 "user",
                 "profile"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "修改当前登录用户的**昵称**和/或**头像**。需要登录，`id` 取自 JWT，**无法修改他人资料**。\n\n- **昵称与头像至少要传一项**（DTO 上的 `@AssertTrue` 跨字段校验）：两个都不传、或都传空串 → **HTTP 400**，message 形如 `atLeastOnePresent 昵称和头像至少要改一项`。\n- `nickname`：最长 **20 字**（超长 → 400 `昵称不能超过 20 个字`），服务端会 **trim**。\n- `avatar`：传的是 **object key**（先调 `POST /upload/image?scene=avatar` 拿到返回的 key），**不是 URL**；服务端会 trim。\n- 传空串等价于「这一项不改」。\n- 只更新传了的字段（SQL 用动态 `<set>`），用户名、密码等不受影响。\n- 改了昵称时会顺带 **bump 搜索缓存版本号**，让视频搜索/列表中的作者昵称尽快更新。\n- 返回修改后的 `id` / `nickname` / `avatarUrl`（头像为 10 分钟预签名 URL）。\n- ⚠️ `avatar` 没有长度校验，而数据库列是 `varchar(255)`；传超长 key 会触发 MySQL `Data too long` → **500**。（代码可见，未运行时验证）",
             "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"nickname\": \"新昵称\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
-              },
-              "mode": "raw",
-              "raw": "{\r\n  \"nickname\": \"新昵称\"\r\n}"
+              }
             }
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"id\": 5,\r\n    \"avatarUrl\": \"http://localhost:9000/vidora-image/avatar/2026/10/04/xxx.jpg?X-Amz-...\",\r\n    \"nickname\": \"新昵称\"\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
-                "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/user/profile"
-                },
-                "method": "PUT",
                 "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"nickname\": \"新昵称\"\r\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
-                  },
-                  "mode": "raw",
-                  "raw": "{\r\n  \"nickname\": \"新昵称\"\r\n}"
+                  }
+                },
+                "method": "PUT",
+                "url": {
+                  "raw": "{{baseUrl}}/user/profile",
+                  "host": [
+                    "{{baseUrl}}"
+                  ]
                 },
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   },
                   {
+                    "value": "application/json",
                     "key": "Content-Type",
-                    "type": "text",
-                    "value": "application/json"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "成功",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"id\": 5,\r\n    \"avatarUrl\": \"http://localhost:9000/vidora-image/avatar/2026/10/04/xxx.jpg?X-Amz-...\",\r\n    \"nickname\": \"新昵称\"\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -321,16 +321,12 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/liked?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
               "query": [
                 {
                   "value": "20",
@@ -345,12 +341,16 @@
                   "key": "cursorId"
                 }
               ],
+              "raw": "{{baseUrl}}/user/liked?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
               "path": [
                 "user",
                 "liked"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
-            "description": "返回当前登录用户点赞过的、且 `status=2` 的视频列表，按**点赞时间倒序**（`video_like.create_time desc, video_like.id desc`）。\n\n- 需要登录。`cursorTime` 与 `cursorId` **必须同时传或同时不传**，只传一个会返回 `业务异常： 游标参数不完整`。\n- 取上一页返回的 `nextCursor` / `nextCursorId` 作为下一页入参即可翻页。\n- `size` 范围 1~50，默认 20。\n- 封面 `coverUrl` 为预签名 URL，有效期 10 分钟。"
+            "description": "返回当前登录用户点赞过的、且 `status=2` 的视频列表，按**点赞时间倒序**（`video_like.create_time desc, video_like.id desc`）。\n\n- 需要登录。`cursorTime` 与 `cursorId` **必须同时传或同时不传**，只传一个会返回 `业务异常： 游标参数不完整`。\n- 取上一页返回的 `nextCursor` / `nextCursorId` 作为下一页入参即可翻页。\n- `size` 范围 1~50，默认 20。\n- 封面 `coverUrl` 为 10 分钟预签名 URL。`likeTime` = 点赞时间（本列表的排序/游标依据）；同项的 `favoriteTime` 恒为 null。"
           }
         },
         {
@@ -359,16 +359,12 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/favorites?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
               "query": [
                 {
                   "value": "20",
@@ -383,12 +379,16 @@
                   "key": "cursorId"
                 }
               ],
+              "raw": "{{baseUrl}}/user/favorites?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
               "path": [
                 "user",
                 "favorites"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
-            "description": "返回当前登录用户收藏过的、且 `status=2` 的视频列表，按**收藏时间倒序**（`video_favorite.create_time desc, video_favorite.id desc`）。\n\n参数与翻页方式同 `GET /user/liked`。"
+            "description": "返回当前登录用户收藏过的、且 `status=2` 的视频列表，按**收藏时间倒序**（`video_favorite.create_time desc, video_favorite.id desc`）。\n\n参数与翻页方式同 `GET /user/liked`。`favoriteTime` = 收藏时间（本列表的排序/游标依据）；同项的 `likeTime` 恒为 null。"
           }
         },
         {
@@ -397,49 +397,49 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/{{userId}}/follow",
               "query": [],
+              "raw": "{{baseUrl}}/user/{{userId}}/follow",
               "path": [
                 "user",
                 "{{userId}}",
                 "follow"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "关注指定用户。需要登录，`follower_id` 取自 JWT。\n\n- **幂等**：`user_follow` 上有唯一键 `uk_follower_followee(follower_id, followee_id)`，插入语句是 `INSERT ... ON DUPLICATE KEY UPDATE id = id` —— **重复关注不报错、不产生重复行**，直接返回 `code=1`。\n- 不能关注自己 → `业务异常： 不能关注自己`。\n- 目标用户不存在 → `业务异常： 用户不存在`。\n- 我关注的人见 `GET /user/following`；**没有**对应的粉丝列表接口。"
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": null,\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
+                "body": null,
+                "method": "POST",
                 "url": {
+                  "raw": "{{baseUrl}}/user/{{userId}}/follow",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/user/{{userId}}/follow"
+                  ]
                 },
-                "method": "POST",
-                "body": null,
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "成功",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": null,\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -449,49 +449,49 @@
             "method": "DELETE",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/{{userId}}/follow",
               "query": [],
+              "raw": "{{baseUrl}}/user/{{userId}}/follow",
               "path": [
                 "user",
                 "{{userId}}",
                 "follow"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "取消对指定用户的关注。需要登录。\n\n- 按 `(follower_id, followee_id)` 精确删除，**没关注过也返回 `code=1`**（幂等）。\n- 不能对自己操作 → `业务异常： 不能取消关注自己`。\n- 目标用户不存在 → `业务异常： 用户不存在`。"
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": null,\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
+                "body": null,
+                "method": "DELETE",
                 "url": {
+                  "raw": "{{baseUrl}}/user/{{userId}}/follow",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/user/{{userId}}/follow"
+                  ]
                 },
-                "method": "DELETE",
-                "body": null,
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "成功（没关注过也返回成功）",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": null,\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -501,16 +501,12 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/following?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
               "query": [
                 {
                   "value": "20",
@@ -525,37 +521,41 @@
                   "key": "cursorId"
                 }
               ],
+              "raw": "{{baseUrl}}/user/following?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
               "path": [
                 "user",
                 "following"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "返回**当前用户关注的人**（不是粉丝）。需要登录。按关注时间倒序（`order by uf.create_time desc, uf.id desc`）翻页，走 `idx_follower_time` 索引。\n\n- `cursorTime` 与 `cursorId` **必须同时传或同时不传**，只传一个返回 `业务异常： 游标参数不完整`。\n- 翻页：把响应里的 `nextCursor` / `nextCursorId` 原样作为下一页的 `cursorTime` / `cursorId`。\n- `size` 1~50，默认 20。\n- 每项的 `followTime` 是关注时间；`avatarUrl` 为 **10 分钟**预签名 URL，对方没设置头像时为 `null`。\n- 该接口**不走缓存**，每次都查库。\n- ⚠️ 没有对应的「粉丝列表」接口。"
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"items\": [\r\n      {\r\n        \"id\": 3,\r\n        \"nickname\": \"鲍勃\",\r\n        \"avatarUrl\": null,\r\n        \"followTime\": \"2026-10-04T18:20:11\"\r\n      }\r\n    ],\r\n    \"hasMore\": false,\r\n    \"nextCursor\": \"2026-10-04T18:20:11\",\r\n    \"nextCursorId\": 12\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
+                "body": null,
+                "method": "GET",
                 "url": {
+                  "raw": "{{baseUrl}}/user/following?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/user/following?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}"
+                  ]
                 },
-                "method": "GET",
-                "body": null,
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "第一页",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"items\": [\r\n      {\r\n        \"id\": 3,\r\n        \"nickname\": \"鲍勃\",\r\n        \"avatarUrl\": null,\r\n        \"followTime\": \"2026-10-04T18:20:11\"\r\n      }\r\n    ],\r\n    \"hasMore\": false,\r\n    \"nextCursor\": \"2026-10-04T18:20:11\",\r\n    \"nextCursorId\": 12\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -565,16 +565,12 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/user/history?size=20&cursorScore={{cursorScore}}",
               "query": [
                 {
                   "value": "20",
@@ -585,37 +581,41 @@
                   "key": "cursorScore"
                 }
               ],
+              "raw": "{{baseUrl}}/user/history?size=20&cursorScore={{cursorScore}}",
               "path": [
                 "user",
                 "history"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "浏览历史列表。需要登录，`userId` 取自 JWT。**按浏览时间倒序**分页，用的是**分数游标**（score cursor），不是 `cursorTime + cursorId`。\n\n**响应形状是严格契约**（前端 `vidora-web/scripts/checkapi.mjs` 逐字段强断言，多一个字段都会 FAIL）：\n\n- `data` **恰好 3 个字段**：`items` / `hasMore` / `nextCursorScore`\n  —— **没有** `nextCursor`，也**没有** `nextCursorId`（与其他列表接口不同，别照抄）。\n- `items[i]` **恰好 4 个字段**：`id` / `title` / `coverUrl` / `viewTime`\n  —— **没有** `nickname`、`viewCount`、`duration`、`likeTime`、`favoriteTime`。\n- `viewTime` 是 `yyyy-MM-ddTHH:mm:ss` 字符串（**不是**数字、不含毫秒、不带 Z）。\n- `nextCursorScore` 是 `number | null`。\n\n**翻页方式**：把上一页返回的 `nextCursorScore` 原样作为下一页的 `cursorScore` 传入（它同时是\"游标\"和\"是否还有下一页\"的信号；`hasMore=false` 时 `nextCursorScore` 为 `null`）。\n\n**服务端行为**：\n\n- 数据源是 Redis 有序集合 `vidora:user:history:{userId}`：member = 视频 id，**score = 浏览时间的毫秒时间戳**。\n- 取数等价于 `ZREVRANGEBYSCORE key 0 (cursorScore-1) LIMIT size+1`，即传 `cursorScore` 时是**左开区间**（服务端内部做 `cursorScore - 1`）。\n- `viewTime` 直接由 score 还原（毫秒 → `LocalDateTime` 并 `withNano(0)`），所以格式天然是 `yyyy-MM-ddTHH:mm:ss`。\n- **已删除 / 已下架的视频会被跳过**（按 id 批量查库，查不到就 continue）。因此**一页可能少于 `size` 条**，即使 `hasMore=true`；服务端最多重试 3 轮来补足。\n- `coverUrl` 为 10 分钟预签名 URL；视频没有封面时为 `null`。\n- Redis 不可用时返回 `业务异常： 浏览记录暂时不可用，请稍后重试`（HTTP 200 + code=0），**不会**静默返回空列表。\n**写入时机（实测确认）**：带**有效 token** 调 `GET /video/{id}` 时才会记录（`VideoServiceImpl.recordHistory`，匿名请求不记）。数据结构是单调递增的有序集合：同一视频只保留一条，重复浏览会把它的时间刷新到最新。每个用户最多保留 **1000** 条（`HISTORY_MAX`），整个 key 的 TTL 是 **30 天**（`HISTORY_TTL`）。\n\n**实测样例**（带 token 依次看 3 个视频后）：\n\n```json\n{\"code\":1,\"data\":{\"items\":[{\"coverUrl\":\"http://localhost:9000/vidora-image/cover/1204.jpg?X-Amz-...\",\"id\":1231,\"title\":\"压测视频 1204\",\"viewTime\":\"2026-10-07T02:28:43\"}],\"hasMore\":true,\"nextCursorScore\":1791311323439},\"message\":\"success\"}\n```"
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"items\": [\r\n      {\r\n        \"id\": 1,\r\n        \"title\": \"第一个视频\",\r\n        \"coverUrl\": \"http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...\",\r\n        \"viewTime\": \"2026-10-04T18:20:11\"\r\n      }\r\n    ],\r\n    \"hasMore\": true,\r\n    \"nextCursorScore\": 1791044411000\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
+                "body": null,
+                "method": "GET",
                 "url": {
+                  "raw": "{{baseUrl}}/user/history?size=20&cursorScore={{cursorScore}}",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/user/history?size=20&cursorScore={{cursorScore}}"
+                  ]
                 },
-                "method": "GET",
-                "body": null,
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "第一页（还有下一页）",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"items\": [\r\n      {\r\n        \"id\": 1,\r\n        \"title\": \"第一个视频\",\r\n        \"coverUrl\": \"http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...\",\r\n        \"viewTime\": \"2026-10-04T18:20:11\"\r\n      }\r\n    ],\r\n    \"hasMore\": true,\r\n    \"nextCursorScore\": 1791044411000\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         }
@@ -630,16 +630,12 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video?page=1&pageSize=10&keyword={{keyword}}&orderBy=create_time&order=desc",
               "query": [
                 {
                   "value": "1",
@@ -662,7 +658,11 @@
                   "key": "order"
                 }
               ],
-              "path": "video"
+              "raw": "{{baseUrl}}/video?page=1&pageSize=10&keyword={{keyword}}&orderBy=create_time&order=desc",
+              "path": "video",
+              "host": [
+                "{{baseUrl}}"
+              ]
             },
             "description": "公开视频列表，只返回 `status=2` 的记录。**可匿名访问。**\n\n- 分页：`page`≥1（默认 1）、`pageSize` 1~100（默认 10，超过 100 直接返回 400）。\n- 搜索：`keyword` 走 `title` / `introduction` 模糊匹配，字符集有白名单（中文、字母、数字、空格、`_`、`-`、`.`），最多 50 字符；不含白名单字符返回 400。\n- 排序：`orderBy` ∈ `create_time` / `like_count` / `view_count` / `favorite_count`，`order` ∈ `asc` / `desc`；**非法值不会报错，而是静默回落到默认的 `create_time desc`**。\n- ⚠️ `orderBy=view_count` 时 deep paging 无索引，页码很大时可能变慢。\n- 结果为 `PageResult`（`total` + `items`），`coverUrl` 为 10 分钟预签名 URL。\n- 结果缓存 30 分钟，键含全局版本号 `vidora:video:search:version`。"
           }
@@ -673,16 +673,12 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/mine?page=1&pageSize=10&keyword={{keyword}}&status={{status}}&orderBy=create_time&order=desc",
               "query": [
                 {
                   "value": "1",
@@ -709,9 +705,13 @@
                   "key": "order"
                 }
               ],
+              "raw": "{{baseUrl}}/video/mine?page=1&pageSize=10&keyword={{keyword}}&status={{status}}&orderBy=create_time&order=desc",
               "path": [
                 "video",
                 "mine"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "当前登录用户的投稿，按当前用户过滤（`user_id` 取自 JWT，不接受客户端传入）。分页与排序参数同 `GET /video`。\n\n- `status` 支持 0/1/2/3/4 过滤（`0=上传中`、`2=已发布`），已修复此前 `status=0` 过滤被静默忽略的问题。\n- 结果缓存键 `vidora:video:myvideo:search:{userId}:...`，TTL 30 分钟。\n- ⚠️ 投稿链路（`/upload/video/init`、`/complete`、`/abort`）**不主动失效该缓存**，所以刚上传完的稿件最多 30 分钟内可能还看不到。"
@@ -723,48 +723,48 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/{{videoId}}",
               "query": [],
+              "raw": "{{baseUrl}}/video/{{videoId}}",
               "path": [
                 "video",
                 "{{videoId}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "**可匿名访问**，但**这个 GET 有写副作用**：每次调用都会让该视频的播放量 +1（Redis `vidora:video:play:{id}` 自增，后台每 30 秒刷回 `video.view_count`）。\n\n- 只能取到 `status=2` 的视频，其他状态与不存在的 id 都返回 `业务异常： 视频不存在`。\n- 带 token 时会额外返回 `liked` / `favorited`（1/0）；匿名时两者恒为 0。\n- ⚠️ 播放量无去重，脚本可无限刷；且 `orderBy=view_count` 排序时能把自己刷上榜首。\n- ⚠️ **Redis 不可达时该接口返回 500**，其余接口会正常降级。\n- 详情缓存 2 小时；`coverUrl`/`creatorCoverUrl` 30 分钟、`videoUrl` 100 分钟预签名。"
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"id\": 1,\r\n    \"title\": \"第一个视频\",\r\n    \"introduction\": \"简介\",\r\n    \"coverUrl\": \"http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...\",\r\n    \"videoUrl\": \"http://localhost:9000/vidora-video/v/01.mp4?X-Amz-...\",\r\n    \"duration\": 600,\r\n    \"viewCount\": 1159947,\r\n    \"likeCount\": 1,\r\n    \"favoriteCount\": 0,\r\n    \"createTime\": \"2026-08-01T10:00:00\",\r\n    \"nickName\": \"小李\",\r\n    \"creatorCoverUrl\": null,\r\n    \"liked\": 1,\r\n    \"favorited\": 0\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
+                "body": null,
+                "method": "GET",
                 "url": {
+                  "raw": "{{baseUrl}}/video/{{videoId}}",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/video/{{videoId}}"
+                  ]
                 },
-                "method": "GET",
-                "body": null,
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "成功",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"id\": 1,\r\n    \"title\": \"第一个视频\",\r\n    \"introduction\": \"简介\",\r\n    \"coverUrl\": \"http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...\",\r\n    \"videoUrl\": \"http://localhost:9000/vidora-video/v/01.mp4?X-Amz-...\",\r\n    \"duration\": 600,\r\n    \"viewCount\": 1159947,\r\n    \"likeCount\": 1,\r\n    \"favoriteCount\": 0,\r\n    \"createTime\": \"2026-08-01T10:00:00\",\r\n    \"nickName\": \"小李\",\r\n    \"creatorCoverUrl\": null,\r\n    \"liked\": 1,\r\n    \"favorited\": 0\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         }
@@ -779,16 +779,12 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/feed?sort=latest&size=20&cursorTime={{cursorTime}}&cursorScore={{cursorScore}}&cursorId={{cursorId}}",
               "query": [
                 {
                   "value": "latest",
@@ -811,37 +807,41 @@
                   "key": "cursorId"
                 }
               ],
+              "raw": "{{baseUrl}}/video/feed?sort=latest&size=20&cursorTime={{cursorTime}}&cursorScore={{cursorScore}}&cursorId={{cursorId}}",
               "path": [
                 "video",
                 "feed"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
-            "description": "按发布时间倒序的推荐流（`status=2`，`order by create_time desc, id desc`），用**复合游标**翻页：取响应里的 `nextCursor` / `nextCursorId` 原样作为下一页的 `cursorTime` / `cursorId`。\n\n- **可匿名访问。**\n- `sort` 只支持 `latest`；传 `hot` 会返回 `业务异常： 推荐流暂未上线`（HTTP 200 + code=0）。传其他值返回 400（`sort 参数非法`）。\n- `cursorTime` 与 `cursorId` 必须成对出现，否则返回 `业务异常： 游标参数不完整`。\n- `size` 1~50，默认 20。\n- 结果缓存 5 分钟，键 `vidora:video:feed:{sort}:{cursor}:{size}`；封面为 10 分钟预签名 URL。"
+            "description": "首页推荐流，**两种排序，返回结构不同**。需要登录（非匿名）。\n\n| `sort` | 排序依据 | `data` 的字段 |\n|---|---|---|\n| `latest`（默认） | `create_time desc, id desc` | `items` / `hasMore` / **`nextCursor`** / `nextCursorId` |\n| `hot` | `hot_score desc, id desc` | `items` / `hasMore` / **`nextCursorScore`** / `nextCursorId` |\n\n**游标参数必须与 sort 匹配**（服务端逐项校验，不匹配会报 `业务异常： 游标参数不完整`）：\n\n- `sort=latest`：翻页用上一页的 `nextCursor` + `nextCursorId` → 传回 `cursorTime` + `cursorId`（**两者必须成对**）。\n- `sort=hot`：翻页用上一页的 `nextCursorScore` + `nextCursorId` → 传回 `cursorScore` + `cursorId`（**两者必须成对**）。\n\n**`hot_score` 是怎么算的**（`VideoMapper.recomputeHotScore`）：\n\n```\nhot_score = LEAST(4000000000,\n                   ROUND((view_count*1 + like_count*3 + favorite_count*5)\n                         / POW(TIMESTAMPDIFF(HOUR, create_time, NOW()) + 2, 1.5) * 1000))\n```\n\n即：播放×1、点赞×3、收藏×5 加权，再按\"发布小时数 + 2\"的 1.5 次方做时间衰减；`LEAST(4000000000, ...)` 是防止 MySQL unsigned 溢出（溢出会导致整条 UPDATE 失败、热度静默冻结）。\n\n- 该任务 `@Scheduled(fixedDelay = 300_000)`，**每 5 分钟重算一次**，且只更新 `hot_score` 有变化的、`status=2` 的行。\n- 而 `view_count` / `like_count` / `favorite_count` 本身也是异步落库的（30s / 60s / 60s）。\n- ⇒ **热榜最长约有 5~6 分钟的延迟**，刚点赞/刚看过的视频不会立刻出现在榜单上。做联调时别把它当实时榜单。\n\n其他行为：\n\n- `size` 1~50，默认 20。\n- 结果缓存 **5 分钟**，键 `vidora:video:feed:{sort}:{cursor}:{size}`（`latest` 与 `hot` 的键不会互相污染）。\n- 该 feed 对所有人一致、无个性化，所以能共享缓存；`items` 里 **`likeTime` / `favoriteTime` 恒为 null**，也不返回 `liked` / `favorited`。\n- `coverUrl` 为 10 分钟预签名 URL。\n- `sort` 传其他值返回 **HTTP 400**（`sort 参数非法`）。"
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"items\": [\r\n      {\r\n        \"id\": 9876,\r\n        \"title\": \"压测视频 9849\",\r\n        \"coverUrl\": \"http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...\",\r\n        \"duration\": 600,\r\n        \"viewCount\": 12,\r\n        \"createTime\": \"2026-10-04T12:00:00\",\r\n        \"nickName\": \"小李\"\r\n      }\r\n    ],\r\n    \"hasMore\": true,\r\n    \"nextCursor\": \"2026-10-04T12:00:00\",\r\n    \"nextCursorId\": 9876\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
+                "body": null,
+                "method": "GET",
                 "url": {
+                  "raw": "{{baseUrl}}/video/feed?sort=latest&size=20&cursorTime={{cursorTime}}&cursorScore={{cursorScore}}&cursorId={{cursorId}}",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/video/feed?sort=latest&size=20&cursorTime={{cursorTime}}&cursorScore={{cursorScore}}&cursorId={{cursorId}}"
+                  ]
                 },
-                "method": "GET",
-                "body": null,
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
-              "name": "第一页",
-              "code": 200
+              "_postman_previewlanguage": "json",
+              "code": 200,
+              "name": "sort=latest（时间游标）",
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"items\": [\r\n      {\r\n        \"id\": 9876,\r\n        \"title\": \"压测视频 9849\",\r\n        \"coverUrl\": \"http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...\",\r\n        \"duration\": 600,\r\n        \"viewCount\": 12,\r\n        \"createTime\": \"2026-10-07T12:00:00\",\r\n        \"nickName\": \"小李\",\r\n        \"likeTime\": null,\r\n        \"favoriteTime\": null\r\n      }\r\n    ],\r\n    \"hasMore\": true,\r\n    \"nextCursor\": \"2026-10-07T12:00:00\",\r\n    \"nextCursorId\": 9876\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         }
@@ -856,21 +856,21 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/{{videoId}}/like",
               "query": [],
+              "raw": "{{baseUrl}}/video/{{videoId}}/like",
               "path": [
                 "video",
                 "{{videoId}}",
                 "like"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "幂等：`video_like` 上有 `uk_video_user(video_id,user_id)`，插入用 `INSERT IGNORE ... ON DUPLICATE KEY UPDATE id=id`，重复点赞不会重复计数、也仍返回 `code=1`。\n\n- `user_id` 取自 JWT，客户端无法伪造。\n- 会**校验视频是否存在**（不存在 → `业务异常： 视频不存在`），但**不校验 `status`**：`status=4`（已下架）的视频只要行还在就仍可点赞。\n- 点赞数不是实时落库的：先写 Redis 脏集合 `vidora:video:like_dirty`，后台定时刷回 `video.like_count`。"
@@ -882,21 +882,21 @@
             "method": "DELETE",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/{{videoId}}/like",
               "query": [],
+              "raw": "{{baseUrl}}/video/{{videoId}}/like",
               "path": [
                 "video",
                 "{{videoId}}",
                 "like"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "幂等：没点过赞也返回 `code=1`。**不校验视频是否存在。**"
@@ -913,21 +913,21 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/{{videoId}}/favorite",
               "query": [],
+              "raw": "{{baseUrl}}/video/{{videoId}}/favorite",
               "path": [
                 "video",
                 "{{videoId}}",
                 "favorite"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "幂等：`video_favorite` 上有 `uk_video_user(video_id,user_id)`，插入用 `INSERT IGNORE ... ON DUPLICATE KEY UPDATE id=id`，重复收藏不重复计数。\n\n- 与点赞一致，**会校验视频是否存在**（`findById` → 不存在则 `业务异常： 视频不存在`）；同样**不校验 `status`**，已下架的视频只要行还在就能被收藏。\n- 收藏数先写 Redis 脏集合 `vidora:video:favorite_dirty`，后台定时刷回 `video.favorite_count`。\n- 收藏状态（详情接口的 `favorited` 字段）用独立缓存键 `vidora:video:favorite_users:{id}`，**与点赞的 `vidora:video:like_users:{id}` 互不影响**；缓存未命中时回源 `video_favorite` 表。"
@@ -939,21 +939,21 @@
             "method": "DELETE",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/{{videoId}}/favorite",
               "query": [],
+              "raw": "{{baseUrl}}/video/{{videoId}}/favorite",
               "path": [
                 "video",
                 "{{videoId}}",
                 "favorite"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "幂等：没收藏过也返回 `code=1`。**不校验视频是否存在。**"
@@ -970,37 +970,37 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               },
               {
+                "value": "application/json",
                 "key": "Content-Type",
-                "type": "text",
-                "value": "application/json"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/{{videoId}}/comment",
               "query": [],
+              "raw": "{{baseUrl}}/video/{{videoId}}/comment",
               "path": [
                 "video",
                 "{{videoId}}",
                 "comment"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "给视频发评论。需要登录，`user_id` 取自 JWT。\n\n- 会校验视频存在（用的是不带 `status` 过滤的 `findById`，所以**上传中/已下架的视频也能被评论**），不存在返回 `业务异常： 视频不存在`。\n- `content` 必填，1~500 字符（超长返回 **400**）。\n- 写入后**不会失效评论列表缓存**，紧接着查列表可能看不到刚发的评论（最长 30 分钟）。",
             "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"content\": \"这个视频讲得很清楚\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
-              },
-              "mode": "raw",
-              "raw": "{\r\n  \"content\": \"这个视频讲得很清楚\"\r\n}"
+              }
             }
           }
         },
@@ -1010,16 +1010,12 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/{{videoId}}/comment?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
               "query": [
                 {
                   "value": "20",
@@ -1034,38 +1030,42 @@
                   "key": "cursorId"
                 }
               ],
+              "raw": "{{baseUrl}}/video/{{videoId}}/comment?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
               "path": [
                 "video",
                 "{{videoId}}",
                 "comment"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "按 `create_time desc, id desc` 排序，用**复合游标**（`cursorTime` + `cursorId`）翻页，不需要 offset，深翻页性能稳定。\n\n- **可匿名访问**；匿名时每条评论的 `mine` 恒为 0，带 token 时自己发的评论 `mine=1`。\n- 不传游标 = 第一页；翻页把上一页响应的 `nextCursor` / `nextCursorId` 原样传回 `cursorTime` / `cursorId`。\n- `size` 1~100，默认 20。**`cursorTime` 必须是 ISO 8601 带 `T` 的格式**（`2026-10-04T16:52:51`）；用空格分隔会返回 400。\n- ⚠️ `?size=`（空值）会让该接口 **500**；不传该参数则用默认值 20，正常（见顶层「已知问题 3」）。\n- ⚠️ 不校验视频是否存在：不存在的视频返回 `code=1` + 空列表（见顶层「已知问题 1」）。\n- ⚠️ 缓存键 `vidora:video:comments:{version}:{videoId}:{cursorId}` **不含 `size` 和 `cursorTime`**：同一个 `cursorId` 先请求 `size=1` 再请求 `size=20` 会命中前者的缓存（见顶层「已知问题 4」）。\n- `avatarUrl` 为 30 分钟预签名 URL。"
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"items\": [\r\n      {\r\n        \"id\": 2441893,\r\n        \"content\": \"测试评论\",\r\n        \"createTime\": \"2026-10-04T16:52:51\",\r\n        \"nickName\": \"小李\",\r\n        \"avatarUrl\": null,\r\n        \"mine\": 0\r\n      }\r\n    ],\r\n    \"hasMore\": true,\r\n    \"nextCursor\": \"2026-10-04T16:52:51\",\r\n    \"nextCursorId\": 2441893\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
+                "body": null,
+                "method": "GET",
                 "url": {
+                  "raw": "{{baseUrl}}/video/{{videoId}}/comment?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/video/{{videoId}}/comment?size=20&cursorTime={{cursorTime}}&cursorId={{cursorId}}"
+                  ]
                 },
-                "method": "GET",
-                "body": null,
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "第一页",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"items\": [\r\n      {\r\n        \"id\": 2441893,\r\n        \"content\": \"测试评论\",\r\n        \"createTime\": \"2026-10-04T16:52:51\",\r\n        \"nickName\": \"小李\",\r\n        \"avatarUrl\": null,\r\n        \"mine\": 0\r\n      }\r\n    ],\r\n    \"hasMore\": true,\r\n    \"nextCursor\": \"2026-10-04T16:52:51\",\r\n    \"nextCursorId\": 2441893\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -1075,22 +1075,22 @@
             "method": "DELETE",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/video/{{videoId}}/comment/{{commentId}}",
               "query": [],
+              "raw": "{{baseUrl}}/video/{{videoId}}/comment/{{commentId}}",
               "path": [
                 "video",
                 "{{videoId}}",
                 "comment",
                 "{{commentId}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "需要登录。服务端先用 `(commentId, videoId)` 查出评论作者，再与 JWT 里的用户比对：\n\n- 不是自己的 → `业务异常： 无权限删除`\n- 评论不存在 → `业务异常： 评论不存在`\n- 但两者都返回 **HTTP 200**，且 message 不同，可用于侧信道枚举评论 id 是否存在。\n\n⚠️ 删除 SQL 只按 `id` 删，不带 `video_id` 条件（`video_id` 仅用于上面的归属查询）；且不检查影响行数。删除后会 INCR 评论列表的版本号，使该视频的评论缓存整体失效。"
@@ -1107,29 +1107,29 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/upload/video",
               "query": [],
+              "raw": "{{baseUrl}}/upload/video",
               "path": [
                 "upload",
                 "video"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
-            "description": "同步上传单个文件到 `vidora-video` 桶，**只返回 object key，不落库**。\n\n- 表单字段名必须是 **`file`**。\n- 扩展名白名单：视频类型；大小上限 **100MB**（`UploadScene.VIDEO`）。\n- 类型不支持返回 **415**，超限返回 **413**，都是 `上传失败： ...` 前缀。\n- 大文件请改用分片上传 `/upload/video/init` + `/part` + `/complete`。",
+            "description": "同步上传单个文件到 `vidora-video` 桶，**只返回 object key，不落库**。\n\n- 表单字段名必须是 **`file`**。\n- 扩展名白名单：视频类型；大小上限 **1GB**（`UploadScene.VIDEO`，2026-10-04 由 100MB 提高，与 HTTP 层 `spring.servlet.multipart.max-file-size` 对齐）。\n- 类型不支持返回 **415**，超限返回 **413**，都是 `上传失败： ...` 前缀。\n- 大文件请改用分片上传 `/upload/video/init` + `/part` + `/complete`。",
             "body": {
               "formdata": [
                 {
                   "key": "file",
-                  "type": "file",
-                  "src": []
+                  "src": [],
+                  "type": "file"
                 }
               ],
               "mode": "formdata"
@@ -1137,37 +1137,37 @@
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": \"2026/10/04/3fac8b1c-d158-4249-a27f-6e56accda5d2.mp4\",\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
-                "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/upload/video"
-                },
-                "method": "POST",
                 "body": {
                   "formdata": [
                     {
                       "key": "file",
-                      "type": "file",
-                      "src": []
+                      "src": [],
+                      "type": "file"
                     }
                   ],
                   "mode": "formdata"
                 },
+                "method": "POST",
+                "url": {
+                  "raw": "{{baseUrl}}/upload/video",
+                  "host": [
+                    "{{baseUrl}}"
+                  ]
+                },
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": null,
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": \"2026/10/04/3fac8b1c-d158-4249-a27f-6e56accda5d2.mp4\",\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -1177,20 +1177,20 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/upload/image",
               "query": [],
+              "raw": "{{baseUrl}}/upload/image",
               "path": [
                 "upload",
                 "image"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "上传图片到 `vidora-image` 桶，返回 object key。通常把返回的 key 作为 `POST /upload/video/init` 的 `coverKey`。\n\n- 表单字段：`file`（必填）、`scene`（必填：`cover` 上限 50MB / `avatar` 上限 20MB）。\n- 扩展名白名单：图片类型。⚠️ `scene=video` 也能通过校验，会把视频扩展名的文件写进**图片桶**。",
@@ -1198,13 +1198,13 @@
               "formdata": [
                 {
                   "key": "file",
-                  "type": "file",
-                  "src": []
+                  "src": [],
+                  "type": "file"
                 },
                 {
+                  "value": "cover",
                   "key": "scene",
-                  "type": "text",
-                  "value": "cover"
+                  "type": "text"
                 }
               ],
               "mode": "formdata"
@@ -1222,76 +1222,76 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               },
               {
+                "value": "application/json",
                 "key": "Content-Type",
-                "type": "text",
-                "value": "application/json"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/upload/video/init",
               "query": [],
+              "raw": "{{baseUrl}}/upload/video/init",
               "path": [
                 "upload",
                 "video",
                 "init"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
-            "description": "分片上传的第一步，也是**投稿的入口**：\n\n1. 按 `fileHash` 查是否已有可复用的对象（秒传）；\n2. 查当前用户是否有同 hash 的 `status=0` 中断记录（断点续传）；\n3. 都不满足则新建 S3 Multipart Upload，并**直接往 `video` 表插入一条 `status=0` 的记录**（旧版的 `POST /video` 已删除）。\n\n`data.mode` 的取值：\n- `instant` —— 秒传命中：库里已有相同 `fileHash` 且 `status=2` 的视频，直接复用它的 object key，**不需要再传分片，直接调 `/complete`**。\n- `resume` —— 断点续传：复用当前用户之前中断的同 hash 记录。`uploadedParts` 列出已成功上传的分片号，**只补传缺失的分片**。\n- `new` —— 全新上传。`uploadedParts` 为空。\n\n`data.id` 是视频 id，后续 `part` / `complete` / `abort` 都用它作为 `id` 参数。\n`data.partSize` 是服务端建议的分片大小（5242880 = 5MB），**除最后一片外每片不能小于它**。\n\n**参数校验（本版已补齐）**：`fileSize` ≤ 0 → **HTTP 400「文件大小非法」**；`fileSize` 超过 `UploadScene.VIDEO` 的 100MB 上限 → **HTTP 413「文件太大」**；声明的大小会落库到 `declared_size`，续传时与首次声明不一致会报 `业务异常： 文件大小与首次声明不一致，请重新上传`。\n\n⚠️ 秒传不区分用户：`fileHash` 完全由客户端提供、服务端不重算，且 `findReusableByHash` 不带 user 过滤，知道某个公开视频文件 MD5 的登录用户即可触发秒传复用他人对象（见顶层「已知问题 5」）。",
+            "description": "分片上传的第一步，也是**投稿的入口**：\n\n1. 按 `fileHash` 查是否已有可复用的对象（秒传）；\n2. 查当前用户是否有同 hash 的 `status=0` 中断记录（断点续传）；\n3. 都不满足则新建 S3 Multipart Upload，并**直接往 `video` 表插入一条 `status=0` 的记录**（旧版的 `POST /video` 已删除）。\n\n`data.mode` 的取值：\n- `instant` —— 秒传命中：库里已有相同 `fileHash` 且 `status=2` 的视频，直接复用它的 object key，**不需要再传分片，直接调 `/complete`**。\n- `resume` —— 断点续传：复用当前用户之前中断的同 hash 记录。`uploadedParts` 列出已成功上传的分片号，**只补传缺失的分片**。\n- `new` —— 全新上传。`uploadedParts` 为空。\n\n`data.id` 是视频 id，后续 `part` / `complete` / `abort` 都用它作为 `id` 参数。\n`data.partSize` 是服务端建议的分片大小（5242880 = 5MB），**除最后一片外每片不能小于它**。\n\n**参数校验（本版已补齐）**：`fileSize` ≤ 0 → **HTTP 400「文件大小非法」**；`fileSize` 超过 `UploadScene.VIDEO` 的 **1GB** 上限 → **HTTP 413「文件太大」**（HTTP 层 multipart 上限也已对齐为 1GB / 整请求 1100MB）；声明的大小会落库到 `declared_size`，续传时与首次声明不一致会报 `业务异常： 文件大小与首次声明不一致，请重新上传`。\n\n⚠️ 秒传不区分用户：`fileHash` 完全由客户端提供、服务端不重算，且 `findReusableByHash` 不带 user 过滤，知道某个公开视频文件 MD5 的登录用户即可触发秒传复用他人对象（见顶层「已知问题 5」）。",
             "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"title\": \"我的第一个视频\",\r\n  \"originalFilename\": \"demo.mp4\",\r\n  \"fileSize\": 104857600,\r\n  \"contentType\": \"video/mp4\",\r\n  \"duration\": 120,\r\n  \"coverKey\": \"cover/2026/10/04/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.jpg\",\r\n  \"introduction\": \"简介\",\r\n  \"fileHash\": \"d41d8cd98f00b204e9800998ecf8427e\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
-              },
-              "mode": "raw",
-              "raw": "{\r\n  \"title\": \"我的第一个视频\",\r\n  \"originalFilename\": \"demo.mp4\",\r\n  \"fileSize\": 104857600,\r\n  \"contentType\": \"video/mp4\",\r\n  \"duration\": 120,\r\n  \"coverKey\": \"cover/2026/10/04/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.jpg\",\r\n  \"introduction\": \"简介\",\r\n  \"fileHash\": \"d41d8cd98f00b204e9800998ecf8427e\"\r\n}"
+              }
             }
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"id\": 16413,\r\n    \"videoKey\": \"2026/10/04/3fac8b1c-d158-4249-a27f-6e56accda5d2.mp4\",\r\n    \"uploadId\": \"ZjFmOTgzNzctYWFlZS00ZGM0LWIwYmUtMzdmZGE0OTRkMGM4...\",\r\n    \"partSize\": 5242880,\r\n    \"uploadedParts\": [],\r\n    \"mode\": \"new\"\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
-                "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/upload/video/init"
-                },
-                "method": "POST",
                 "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"title\": \"我的第一个视频\",\r\n  \"originalFilename\": \"demo.mp4\",\r\n  \"fileSize\": 104857600,\r\n  \"contentType\": \"video/mp4\",\r\n  \"duration\": 120,\r\n  \"coverKey\": \"cover/2026/10/04/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.jpg\",\r\n  \"introduction\": \"简介\",\r\n  \"fileHash\": \"d41d8cd98f00b204e9800998ecf8427e\"\r\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
-                  },
-                  "mode": "raw",
-                  "raw": "{\r\n  \"title\": \"我的第一个视频\",\r\n  \"originalFilename\": \"demo.mp4\",\r\n  \"fileSize\": 104857600,\r\n  \"contentType\": \"video/mp4\",\r\n  \"duration\": 120,\r\n  \"coverKey\": \"cover/2026/10/04/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.jpg\",\r\n  \"introduction\": \"简介\",\r\n  \"fileHash\": \"d41d8cd98f00b204e9800998ecf8427e\"\r\n}"
+                  }
+                },
+                "method": "POST",
+                "url": {
+                  "raw": "{{baseUrl}}/upload/video/init",
+                  "host": [
+                    "{{baseUrl}}"
+                  ]
                 },
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   },
                   {
+                    "value": "application/json",
                     "key": "Content-Type",
-                    "type": "text",
-                    "value": "application/json"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": "全新上传",
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"id\": 16413,\r\n    \"videoKey\": \"2026/10/04/3fac8b1c-d158-4249-a27f-6e56accda5d2.mp4\",\r\n    \"uploadId\": \"ZjFmOTgzNzctYWFlZS00ZGM0LWIwYmUtMzdmZGE0OTRkMGM4...\",\r\n    \"partSize\": 5242880,\r\n    \"uploadedParts\": [],\r\n    \"mode\": \"new\"\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -1301,21 +1301,21 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/upload/video/part",
               "query": [],
+              "raw": "{{baseUrl}}/upload/video/part",
               "path": [
                 "upload",
                 "video",
                 "part"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "把文件按 `partSize` 切片后逐片上传。返回该片的 `etag`。\n\n- **form-data 参数**：`file`（分片内容）、`partNumber`（从 1 开始）、`id`（init 返回的视频 id）。\n- 除最后一片外，每片必须 ≥ 5MB（S3 限制）。\n- 只能操作自己创建的上传会话（服务端会校验归属），拿别人的 `id` 会返回 `业务异常： 无权限上传`。\n- ⚠️ 服务端**不校验**分片大小上限、累计大小与 `partNumber` 范围，可被用来无限灌存储。\n- 传完后调 `/upload/video/complete` 合并。",
@@ -1323,18 +1323,18 @@
               "formdata": [
                 {
                   "key": "file",
-                  "type": "file",
-                  "src": []
+                  "src": [],
+                  "type": "file"
                 },
                 {
+                  "value": "1",
                   "key": "partNumber",
-                  "type": "text",
-                  "value": "1"
+                  "type": "text"
                 },
                 {
+                  "value": "{{videoId}}",
                   "key": "id",
-                  "type": "text",
-                  "value": "{{videoId}}"
+                  "type": "text"
                 }
               ],
               "mode": "formdata"
@@ -1342,47 +1342,47 @@
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"partNumber\": 1,\r\n    \"etag\": \"\\\"b6d81b360a5672d80c27430f39153e2c\\\"\",\r\n    \"size\": 5242880\r\n  },\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
-                "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/upload/video/part"
-                },
-                "method": "POST",
                 "body": {
                   "formdata": [
                     {
                       "key": "file",
-                      "type": "file",
-                      "src": []
+                      "src": [],
+                      "type": "file"
                     },
                     {
+                      "value": "1",
                       "key": "partNumber",
-                      "type": "text",
-                      "value": "1"
+                      "type": "text"
                     },
                     {
+                      "value": "{{videoId}}",
                       "key": "id",
-                      "type": "text",
-                      "value": "{{videoId}}"
+                      "type": "text"
                     }
                   ],
                   "mode": "formdata"
                 },
+                "method": "POST",
+                "url": {
+                  "raw": "{{baseUrl}}/upload/video/part",
+                  "host": [
+                    "{{baseUrl}}"
+                  ]
+                },
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": null,
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": {\r\n    \"partNumber\": 1,\r\n    \"etag\": \"\\\"b6d81b360a5672d80c27430f39153e2c\\\"\",\r\n    \"size\": 5242880\r\n  },\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -1392,26 +1392,26 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/upload/video/complete?id={{id}}",
               "query": [
                 {
                   "value": "{{id}}",
                   "key": "id"
                 }
               ],
+              "raw": "{{baseUrl}}/upload/video/complete?id={{id}}",
               "path": [
                 "upload",
                 "video",
                 "complete"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "服务端用 S3 `listParts` 取真实已上传的分片并合并，然后把视频置为 `status=2`（可播放）并清空 `upload_id`。\n\n**请求参数只有 `id`（query 参数）** —— 上一版需要额外传 JSON 分片数组，现在**不需要了**。\n\n- `id` 必须是当前用户自己、且处于 `status=0` 的上传会话，否则 `业务异常： 无权限上传` / `上传会话已失效`。\n- 服务端会校验已上传分片数与 `partSize` 是否匹配，不匹配返回上传失败。\n- ⚠️ 非幂等：如果 S3 已合并成功但后续写库失败，记录会永久卡在 `status=0`，重试会因 `NoSuchUpload` 一直失败，最终被 24 小时清理任务删掉。\n\n完成后再调 `GET /video/{id}` 即可看到 `videoUrl`（100 分钟预签名）。"
@@ -1423,26 +1423,26 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/upload/video/abort?id={{id}}",
               "query": [
                 {
                   "value": "{{id}}",
                   "key": "id"
                 }
               ],
+              "raw": "{{baseUrl}}/upload/video/abort?id={{id}}",
               "path": [
                 "upload",
                 "video",
                 "abort"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "取消 S3 Multipart Upload 并**删除 `status=0` 的视频记录**。用户取消上传、或前端检测到上传失败时调用。\n\n- `id` 走 query 参数。\n- 只能操作自己的会话；非 `status=0` 的记录会提前返回（不会误删已发布的视频）。\n- 幂等性一般：重复调用会因记录已删除而返回上传失败类提示。\n- 无人调用时，后台每天凌晨 3 点会清理 `status=0` 且创建超过 24 小时的上传记录（⚠️ 判据是 `create_time` 而不是最后活跃时间，慢慢传的用户可能在续传时发现会话已被清掉）。"
@@ -1459,18 +1459,18 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
+              "query": [],
+              "raw": "{{baseUrl}}/test",
+              "path": "test",
               "host": [
                 "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/test",
-              "query": [],
-              "path": "test"
+              ]
             },
             "description": "开发期探针，返回 `[\"a\",\"b\",\"c\"]`。需要登录（未在拦截器白名单里）。⚠️ 该接口仍留在生产代码中。"
           }
@@ -1481,48 +1481,48 @@
             "method": "GET",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/test/redis",
               "query": [],
+              "raw": "{{baseUrl}}/test/redis",
               "path": [
                 "test",
                 "redis"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "往 Redis 写 `vidora:test:hello`（TTL 10 分钟）并回显值与剩余时间。⚠️ **一个 GET 接口带写副作用**，且会回显内部键值，建议上线前删除该 Controller。"
           },
           "response": [
             {
-              "body": "{\r\n  \"code\": 1,\r\n  \"data\": \"值vidora/剩余时间599\",\r\n  \"message\": \"success\"\r\n}",
-              "_postman_previewlanguage": "json",
               "originalRequest": {
+                "body": null,
+                "method": "GET",
                 "url": {
+                  "raw": "{{baseUrl}}/test/redis",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/test/redis"
+                  ]
                 },
-                "method": "GET",
-                "body": null,
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ]
               },
               "status": "OK",
+              "_postman_previewlanguage": "json",
+              "code": 200,
               "name": null,
-              "code": 200
+              "body": "{\r\n  \"code\": 1,\r\n  \"data\": \"值vidora/剩余时间599\",\r\n  \"message\": \"success\"\r\n}"
             }
           ]
         },
@@ -1532,25 +1532,25 @@
             "method": "POST",
             "header": [
               {
+                "value": "Bearer {{token}}",
                 "key": "Authorization",
-                "type": "text",
-                "value": "Bearer {{token}}"
+                "type": "text"
               }
             ],
             "url": {
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "raw": "{{baseUrl}}/test/echo?value={{value}}",
               "query": [
                 {
                   "value": "{{value}}",
                   "key": "value"
                 }
               ],
+              "raw": "{{baseUrl}}/test/echo?value={{value}}",
               "path": [
                 "test",
                 "echo"
+              ],
+              "host": [
+                "{{baseUrl}}"
               ]
             },
             "description": "校验 `value` 非空后返回固定 `success`。参数走 **query string**（不是 JSON body）。"
@@ -1571,11 +1571,11 @@
                 "method": "GET",
                 "header": [],
                 "url": {
+                  "raw": "{{baseUrl}}/test",
+                  "path": "test",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/test",
-                  "path": "test"
+                  ]
                 },
                 "description": "断言 HTTP 401。拦截器覆盖 /**，只放行 /user/login、/user/register 与 4 个匿名读接口。\n\n**预期结果**：HTTP 401 + 权限异常： 未登录/未授权"
               }
@@ -1586,17 +1586,17 @@
                 "method": "GET",
                 "header": [
                   {
+                    "value": "Bearer eyJhbGciOiJub25lIn0.eyJpZCI6MX0.",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer eyJhbGciOiJub25lIn0.eyJpZCI6MX0."
+                    "type": "text"
                   }
                 ],
                 "url": {
+                  "raw": "{{baseUrl}}/test",
+                  "path": "test",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/test",
-                  "path": "test"
+                  ]
                 },
                 "description": "发一个签名无效的 JWT，断言 HTTP 401。\n\n**预期结果**：HTTP 401"
               }
@@ -1607,17 +1607,17 @@
                 "method": "GET",
                 "header": [
                   {
+                    "value": "",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": ""
+                    "type": "text"
                   }
                 ],
                 "url": {
+                  "raw": "{{baseUrl}}/test",
+                  "path": "test",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/test",
-                  "path": "test"
+                  ]
                 },
                 "description": "Authorization 传空串。空值会被当作未登录处理，**不应该** 500。\n\n**预期结果**：HTTP 401"
               }
@@ -1628,17 +1628,17 @@
                 "method": "GET",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
+                  "raw": "{{baseUrl}}/nope",
+                  "path": "nope",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/nope",
-                  "path": "nope"
+                  ]
                 },
                 "description": "NoResourceFoundException 已由全局处理器映射为 404。故意使用一个不存在的路径。\n\n**预期结果**：HTTP 404 + 资源不存在"
               }
@@ -1649,19 +1649,19 @@
                 "method": "GET",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/video/abc",
                   "path": [
                     "video",
                     "abc"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "路径参数类型不匹配。MethodArgumentTypeMismatchException 已映射为 400。\n\n**预期结果**：HTTP 400 + 参数 id 类型不正确"
@@ -1673,19 +1673,19 @@
                 "method": "PUT",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/video/{{videoId}}",
                   "path": [
                     "video",
                     "{{videoId}}"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "HttpRequestMethodNotSupportedException 已映射为 405。故意用一个未在契约里声明的方法。\n\n**预期结果**：HTTP 405 + 请求方式不支持: PUT"
@@ -1697,20 +1697,20 @@
                 "method": "POST",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/video/{{videoId}}/like",
                   "path": [
                     "video",
                     "{{videoId}}",
                     "like"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "video_like 有 uk_video_user，用 INSERT IGNORE，重复点赞幂等。\n\n**预期结果**：两次都 code=1"
@@ -1722,20 +1722,20 @@
                 "method": "POST",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/user/{{userId}}/follow",
                   "path": [
                     "user",
                     "{{userId}}",
                     "follow"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "user_follow 唯一键 + ON DUPLICATE KEY UPDATE id=id，重复关注幂等。实测确认。\n\n**预期结果**：两次都 code=1"
@@ -1747,20 +1747,20 @@
                 "method": "DELETE",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/user/{{userId}}/follow",
                   "path": [
                     "user",
                     "{{userId}}",
                     "follow"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "按 (follower_id, followee_id) 精确删除，没关注过也返回成功。\n\n**预期结果**：code=1"
@@ -1772,17 +1772,17 @@
                 "method": "GET",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
+                  "raw": "{{baseUrl}}/video?orderBy=id%3B%20DROP%20TABLE%20video%3B--",
+                  "path": "video",
                   "host": [
                     "{{baseUrl}}"
-                  ],
-                  "raw": "{{baseUrl}}/video?orderBy=id%3B%20DROP%20TABLE%20video%3B--",
-                  "path": "video"
+                  ]
                 },
                 "description": "orderBy/order 走 BasePageDto 的 Set 白名单，非法值静默回落默认，不报错也不注入。\n\n**预期结果**：code=1（未执行注入）"
               }
@@ -1793,30 +1793,30 @@
                 "method": "POST",
                 "header": [
                   {
+                    "value": "application/json",
                     "key": "Content-Type",
-                    "type": "text",
-                    "value": "application/json"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/user/login",
                   "path": [
                     "user",
                     "login"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "HttpMessageNotReadableException 已映射为 400。\n\n**预期结果**：HTTP 400 + 请求体格式错误",
                 "body": {
+                  "mode": "raw",
+                  "raw": "{not-json",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
-                  },
-                  "mode": "raw",
-                  "raw": "{not-json"
+                  }
                 }
               }
             }
@@ -1831,30 +1831,30 @@
                 "method": "POST",
                 "header": [
                   {
+                    "value": "application/json",
                     "key": "Content-Type",
-                    "type": "text",
-                    "value": "application/json"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/user/register",
                   "path": [
                     "user",
                     "register"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "UserRegisterDto 只有 @NotBlank，没有 @Size；DB 列 varchar(20)。实测 HTTP 500（插入被 MySQL 拒绝，未落库）。\n\n**预期结果**：HTTP 500 + 系统繁忙（应为 400）",
                 "body": {
+                  "mode": "raw",
+                  "raw": "{\"username\":\"averyverylongusernamethatexceeds20\",\"password\":\"123456\",\"nickname\":\"n\"}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
-                  },
-                  "mode": "raw",
-                  "raw": "{\"username\":\"averyverylongusernamethatexceeds20\",\"password\":\"123456\",\"nickname\":\"n\"}"
+                  }
                 }
               }
             },
@@ -1864,20 +1864,20 @@
                 "method": "GET",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/video/{{videoId}}/comment?size=",
                   "path": [
                     "video",
                     "{{videoId}}",
                     "comment"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "size 被绑成 null，getSize()+1 拆箱 NPE。实测 HTTP 500。不传 size 则正常。\n\n**预期结果**：HTTP 500（应为 400）"
@@ -1889,20 +1889,20 @@
                 "method": "GET",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/video/999999/comment",
                   "path": [
                     "video",
                     "999999",
                     "comment"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "commentList 不校验视频存在，返回空列表而不是「视频不存在」。实测 code=1。\n\n**预期结果**：code=1 + 空 items"
@@ -1914,19 +1914,19 @@
                 "method": "GET",
                 "header": [
                   {
+                    "value": "Bearer {{token}}",
                     "key": "Authorization",
-                    "type": "text",
-                    "value": "Bearer {{token}}"
+                    "type": "text"
                   }
                 ],
                 "url": {
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
                   "raw": "{{baseUrl}}/test/redis",
                   "path": [
                     "test",
                     "redis"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
                   ]
                 },
                 "description": "TestController 没有 @Profile 限制，任何登录用户都能调，且会真实写 Redis 并回显键值。\n\n**预期结果**：code=1"

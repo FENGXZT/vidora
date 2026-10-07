@@ -18,7 +18,7 @@ public class VideoVo {
     private String coverUrl;                 //视频封面
     private String videoUrl;                 //视频地址
     private Integer duration;               //视频时长
-    private Integer viewCount;              //播放次数
+    private Long viewCount;              //播放次数
     private Integer likeCount;              //点赞次数
     private Integer favoriteCount;          //收藏次数
     private LocalDateTime createTime;          //创建时间

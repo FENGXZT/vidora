@@ -133,12 +133,23 @@ public class UpdateMySqlServiceImpl implements UpdateMySqlService {
         }
     }
 
+    @Override
+    public void recomputeHotScore() {
+        try {
+            updateLikeCount();
+            updateViewCount();
+            videoMapper.recomputeHotScore();
+        } catch (Exception e) {
+            log.error("重新计算热门视频失败", e);
+        }
+    }
+
     /**
      * 更新单个视频播放量
      * @param key redis key
      */
     private void flushOne(String key){
-        Integer count = cacheHelper.get(key, Integer.class);
+        Long count = cacheHelper.get(key, Long.class);
         if (count == null || count < 0) return;
         Long videoId = parseVideoId(key);
         if (videoId == null) return;

@@ -15,7 +15,7 @@ public class VideoListItem {
     private String title;               //视频标题
     private String coverUrl;            //封面图片
     private Integer duration;           //视频时长
-    private Integer viewCount;          //播放数
+    private Long viewCount;          //播放数
     private LocalDateTime createTime;   //创建时间
 
     private String nickName;            //发布者昵称

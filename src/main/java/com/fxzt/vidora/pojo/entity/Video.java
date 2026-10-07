@@ -23,7 +23,7 @@ public class Video {
     private Integer duration;           //视频时长
     private Integer status;            //视频状态 状态:0上传中,1转码中,2可播放,3转码失败,4已下架
     private Integer likeCount;         //点赞数
-    private Integer viewCount;         //播放数
+    private Long viewCount;         //播放数
     private Integer favoriteCount;     //收藏数
     private LocalDateTime createTime;  //创建时间
     private LocalDateTime updateTime;  //更新时间
@@ -39,4 +39,6 @@ public class Video {
 
     @JsonIgnore
     private Integer liked;           //是否点赞，1为点赞，0为未点赞
+
+    private Long hotScore;       //视频热度分数
 }

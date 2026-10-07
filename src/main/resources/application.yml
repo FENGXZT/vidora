@@ -22,7 +22,7 @@ spring:
   task:
     scheduling:
       pool:
-        size: 4                    # 调度线程池大小
+        size: 10                    # 调度线程池大小
       thread-name-prefix: vidora-scheduling-   # 线程名前缀，便于排查
       shutdown:
         await-termination: true    # 关闭时等待任务完成

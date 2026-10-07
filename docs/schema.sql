@@ -31,7 +31,7 @@ CREATE TABLE `comment` (
                            `parent_id` bigint unsigned DEFAULT NULL COMMENT '父评论ID',
                            PRIMARY KEY (`id`),
                            KEY `idx_video_id_create_time` (`video_id`,`create_time`)
-) ENGINE=InnoDB AUTO_INCREMENT=2441895 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='评论表';
+) ENGINE=InnoDB AUTO_INCREMENT=2441896 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='评论表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -71,7 +71,7 @@ CREATE TABLE `user_follow` (
                                UNIQUE KEY `uk_follower_followee` (`follower_id`,`followee_id`),
                                KEY `idx_followee` (`followee_id`),
                                KEY `idx_follower_time` (`follower_id`,`create_time`,`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='用户关注表';
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='用户关注表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -99,11 +99,13 @@ CREATE TABLE `video` (
                          `file_hash` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '文件内容哈希(MD5)',
                          `upload_id` varchar(256) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
                          `declared_size` bigint unsigned NOT NULL DEFAULT '0' COMMENT 'init 时声明的文件总大小',
+                         `hot_score` int unsigned NOT NULL DEFAULT '0' COMMENT '热度分(权重和/时间衰减,×1000取整)',
                          PRIMARY KEY (`id`),
                          KEY `idx_user_id` (`user_id`),
                          KEY `idx_status_create_time` (`status`,`create_time`),
                          KEY `idx_file_hash` (`file_hash`),
-                         KEY `idx_status_like_count` (`status`,`like_count`)
+                         KEY `idx_status_like_count` (`status`,`like_count`),
+                         KEY `idx_status_hot` (`status`,`hot_score`,`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=16463 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='视频表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -140,7 +142,7 @@ CREATE TABLE `video_like` (
                               PRIMARY KEY (`id`),
                               UNIQUE KEY `uk_video_user` (`video_id`,`user_id`),
                               KEY `idx_user_time` (`user_id`,`create_time`,`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1149108 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='点赞表';
+) ENGINE=InnoDB AUTO_INCREMENT=1149110 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='点赞表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -152,4 +154,4 @@ CREATE TABLE `video_like` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-10-06 20:41:00
+-- Dump completed on 2026-10-07 21:51:37

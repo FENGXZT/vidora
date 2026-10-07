@@ -2,6 +2,7 @@ package com.fxzt.vidora.service;
 
 import com.fxzt.vidora.pojo.query.*;
 import com.fxzt.vidora.pojo.vo.*;
+import jakarta.validation.Valid;
 
 public interface VideoService {
     /**
@@ -48,6 +49,11 @@ public interface VideoService {
      * 获取推荐视频列表
      */
     CursorPage<VideoListItem> feedPage(FeedPageDto feedPageDto);
+
+    /**
+     * 获取热门视频列表
+     */
+    ScoreCursorPageWithId<VideoListItem> hotFeed(FeedPageDto dto);
 
     /**
      * 收藏视频

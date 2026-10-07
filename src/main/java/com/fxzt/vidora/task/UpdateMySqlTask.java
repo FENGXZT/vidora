@@ -51,4 +51,11 @@ public class UpdateMySqlTask {
         try { updateMySqlService.updateFavoriteCountFullAmount(); }
         catch (Exception e) { throw new BusinessException("全量更新收藏数失败：" + e.getMessage()); }
     }
+
+    @Scheduled(fixedDelay = 300_000)
+    public void recomputeHotScore(){
+        try {
+            updateMySqlService.recomputeHotScore();
+        }catch (Exception e) { log.error("重新计算热门视频分数失败：" + e.getMessage()); }
+    }
 }

@@ -122,6 +122,21 @@
         limit #{size}
     </select>
 
+    <select id="findHotFeed" resultType="com.fxzt.vidora.pojo.query.VideoCacheDto">
+        select v.id, v.title, v.duration, v.cover_key, v.create_time, v.view_count, u.nickname, v.hot_score hot_score
+        from video v
+        left join user u
+        on v.user_id = u.id
+        where status = 2
+        <if test="cursorScore != null and cursorId != null">
+            and( v.hot_score &lt; #{cursorScore}
+                or( v.hot_score = #{cursorScore} and v.id &lt; #{cursorId} )
+            )
+        </if>
+        order by v.hot_score desc, v.id desc
+        limit #{size}
+    </select>
+
     <select id="findLikedByUser" resultType="com.fxzt.vidora.pojo.query.VideoCacheDto">
         select v.id, v.title, v.create_time create_time, v.duration, v.cover_key, vl.create_time cursor_time, vl.id cursor_id, v.view_count, u.nickname
         from video_like vl
@@ -161,4 +176,19 @@
             #{item}
         </foreach>
     </select>
+
+<!--    &#45;&#45; ★ 防 unsigned 溢出（MySQL8 严格模式会报 1264 → 整条 UPDATE 失败 → 热度静默冻结）-->
+    <update id="recomputeHotScore">
+        UPDATE video
+        SET hot_score = LEAST(
+                4000000000,
+                ROUND((view_count*1 + like_count*3 + favorite_count*5)
+                / POW(TIMESTAMPDIFF(HOUR, create_time, NOW()) + 2, 1.5) * 1000)
+            )
+        WHERE status = 2 and hot_score != LEAST(
+                4000000000,
+                ROUND((view_count*1 + like_count*3 + favorite_count*5)
+                / POW(TIMESTAMPDIFF(HOUR, create_time, NOW()) + 2, 1.5) * 1000)
+            )
+    </update>
 </mapper>

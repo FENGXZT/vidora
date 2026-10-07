@@ -22,7 +22,7 @@ public class FeedPageDto {
     /** 仅 sort=latest 用：上一页最后一条的 createTime */
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private LocalDateTime cursorTime;  //时间戳
-    /** 仅 sort=hot 用（本批不实现，先留字段避免前端改契约） */
+    /** 仅 sort=hot 用, 上一页最后一条的 score */
     private Long cursorScore;           //分数
     private Long cursorId;             //ID
 
@@ -32,5 +32,19 @@ public class FeedPageDto {
         if (sort == null || sort.isBlank()) { sort = "latest"; }
         else if (!ALLOWED_SORT.contains(sort)) { throw new BusinessException("sort 参数非法：" + sort); }
         size = (size == null) ? 20 : Math.clamp(size, 1, 50);
+    }
+
+    public void verifyCursor(){
+        if ("latest".equals(sort)){
+            boolean hasTime =cursorTime != null;
+            boolean hasId   = cursorId != null;
+            if (hasTime != hasId)
+                throw new BusinessException("游标参数不完整：cursorTime 与 cursorId 必须同时提供");
+        }else {
+            boolean hasScore = cursorScore != null;
+            boolean hasId = cursorId != null;
+            if (hasScore != hasId)
+                throw new BusinessException("游标参数不完整：cursorScore 与 cursorId 必须同时提供");
+        }
     }
 }

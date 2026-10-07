@@ -28,7 +28,8 @@ logs/
 Thumbs.db
 
 # 忽略本地环境变量文件
-.env
+.env*
+!.env.example
 
 # ===== 本地私有配置（含密码，绝不提交）=====
 application-local.yml

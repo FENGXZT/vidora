@@ -1,74 +1,220 @@
+# ============================================================
+#  /opt/vidora/docker-compose.yml
+#  启动：cd /opt/vidora && docker compose --env-file .env.prod up -d
+# ============================================================
+name: vidora        # 固定项目名 → 卷名/网络名可预测（vidora-mysql-data / vidora-net）
+
+# 所有服务的日志统一轮转（★ Docker 默认【不轮转】，一个刷屏日志能吃满磁盘）
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
+
+  # ------------------------------------------------------------
+  # MySQL 8（只允许内网 + 本机 loopback，绝不发布到公网）
+  # ------------------------------------------------------------
   mysql:
-    image: mysql:8.0
-    environment:
-      MYSQL_ROOT_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
-      MYSQL_DATABASE: vidora
+    image: mysql:8.0.41
+    container_name: vidora-mysql
     restart: unless-stopped
-    ports:
-      # ★ 只监听 127.0.0.1：宿主机上的 Navicat/DataGrip 照样能连，
-      #   但公网连不上（审计要求：3306 绝不能对公网开放）
-      - "127.0.0.1:3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --default-time-zone=+08:00          # ★ 时区：和 Asia/Shanghai 对齐，否则时间差 8 小时
+      - --innodb-buffer-pool-size=1G        # ★ 主要内存占用项，必须显式给
+      - --max-connections=200
+      - --slow-query-log=1
+      - --long-query-time=1
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: vidora
+      MYSQL_USER: vidora                    # 应用专用账号（不用 root）
+      MYSQL_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./mysql/initdb:/docker-entrypoint-initdb.d:ro   # ★ 首次启动自动导入 schema.sql
+    ports:
+      # ★ 只绑 127.0.0.1：本机（SSH 隧道 / GUI 客户端）能用，公网连不上
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s                     # 首次初始化数据库要时间，别急着判死
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    logging: *default-logging
+    networks: [vidora-net]
 
+  # ------------------------------------------------------------
+  # Redis 7（不发布端口；开 AOF 持久化）
+  # ------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    command: redis-server --requirepass ${SPRING_DATA_REDIS_PASSWORD}
+    container_name: vidora-redis
     restart: unless-stopped
-    ports:
-      # 同上：Redis 绝不能对公网开放
-      - "127.0.0.1:6379:6379"
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_PASSWORD: ${SPRING_DATA_REDIS_PASSWORD}
+    # 用 sh -c + exec，让 redis-server 成为 PID 1（能被 docker stop 干净停掉）
+    command: >
+      sh -c 'exec redis-server
+      --requirepass "$$REDIS_PASSWORD"
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 400mb
+      --maxmemory-policy volatile-lru'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *default-logging
+    networks: [vidora-net]
 
+  # ------------------------------------------------------------
+  # MinIO（★ 镜像在 quay.io！Docker Hub 上没有）
+  # ------------------------------------------------------------
   minio:
-    # ★ 必须用 quay.io：Docker Hub 上的 minio/minio 已被官方下架，直接 pull 会失败
-    image: quay.io/minio/minio
+    image: quay.io/minio/minio:latest       # 首次跑通后请固定 tag，见 §6.3
+    container_name: vidora-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-      MINIO_SERVER_URL: ${MINIO_PUBLIC_ENDPOINT}
-    ports:
-      # 9000 必须对公网开放（方案 B：预签名 URL 的 host 就是它）
-      - "9000:9000"
-      # 9001 是管理台，只给本机 / SSH 隧道用，别开公网
-      - "127.0.0.1:9001:9001"
+      TZ: Asia/Shanghai
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}             # ★ 只给控制台应急用，应用不用它
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_SERVER_URL: ${MINIO_PUBLIC_ENDPOINT}      # 对外自称的地址
+      GOMEMLIMIT: 800MiB                              # Go 运行时内存软上限
     volumes:
       - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # ★ 不写 ports：9000 只给 app 用（走容器网络），9001 控制台走 SSH 隧道
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging: *default-logging
+    networks: [vidora-net]
 
-  vidora-server:
-    build: .
-    ports:
-      - "8080:8080"
-    stop_grace_period: 40s
+  # ------------------------------------------------------------
+  # 应用（Spring Boot）
+  # ------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vidora-server:${APP_TAG:-0.1.0}
+    container_name: vidora-app
     restart: unless-stopped
+    env_file:
+      - .env.prod                 # 注入全部密钥类变量
     environment:
-      # 数据库连接
-      # ★ 这里必须是【服务名 mysql】，不能写 localhost ——
-      #   容器里的 localhost 指的是 vidora-server 自己，不是 MySQL 容器，
-      #   写 localhost 会一直连不上（原文件就是错的，已修）
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/vidora?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
-
-      # Redis 连接（host 使用服务名 redis）
+      # ★ 容器内地址必须用【服务名】，不是 localhost。这三行覆盖 .env.prod 里的同名值
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/vidora?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
       SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      SPRING_DATA_REDIS_PASSWORD: ${SPRING_DATA_REDIS_PASSWORD}
-
-      # MinIO 配置（服务端访问用内部地址，对外 URL 用公开地址）
+      SPRING_DATA_REDIS_PORT: "6379"
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      MINIO_VIDEO_BUCKET_NAME: vidora-video
-      MINIO_IMAGE_BUCKET_NAME: vidora-image
+      TZ: Asia/Shanghai
+    volumes:
+      - ./logs:/app/logs
+      - ./tmp:/app/tmp            # ★ 上传临时文件（要给 4GB 以上空间）
     depends_on:
-      - mysql
-      - redis
-      - minio
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    stop_grace_period: 40s        # ★ 必须 > spring.lifecycle.timeout-per-shutdown-phase(30s)
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/liveness"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 120s          # JVM 冷启动 + 首次连库，给够时间
+    deploy:
+      resources:
+        limits:
+          memory: 2g              # ★ 与 JAVA_OPTS 的 MaxRAMPercentage=65 联动（§4.3）
+    logging: *default-logging
+    networks: [vidora-net]
 
+  # ------------------------------------------------------------
+  # Nginx（唯一对外暴露端口的容器）
+  # ------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: vidora-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # ★ 只有【方案 B：没有域名，用 http://公网IP:9000 访问预签名 URL】时才打开这一行
+      # - "9000:9000"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./web:/usr/share/nginx/html:ro          # 前端 dist
+      - nginx-cache:/var/cache/nginx            # 大请求体的临时目录
+      # - ./nginx/certs:/etc/nginx/certs:ro     # 上 HTTPS 时再打开（§15）
+    depends_on:
+      app:
+        condition: service_healthy
+      # minio 可以不加：nginx 只是"转发"，MinIO 没起来时反代会 502，但前端/API 仍可用。
+      # ★ 如果你确认 MinIO 的 healthcheck 在当前镜像里能跑（§10 Step 7 的验收），再加回来更严谨。
+      # minio:
+      #   condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging: *default-logging
+    networks: [vidora-net]
+
+# ------------------------------------------------------------
+# 网络：只有一条 bridge，容器之间用【服务名】互相访问（不要拆两条，过度设计）
+# ------------------------------------------------------------
+networks:
+  vidora-net:
+    name: vidora-net          # 写死名字 → `docker run --network vidora-net ...` 好写
+    driver: bridge
+
+# ------------------------------------------------------------
+# 数据卷：★ 必须持久化，否则 docker compose down -v 或重建容器 = 数据全丢
+# ------------------------------------------------------------
 volumes:
   mysql-data:
+    name: vidora-mysql-data
+  redis-data:
+    name: vidora-redis-data
   minio-data:
+    name: vidora-minio-data
+  nginx-cache:
+    name: vidora-nginx-cache

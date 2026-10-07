@@ -70,7 +70,7 @@ public interface VideoMapper {
      * 更新视频播放量
      */
     @Update("update video set view_count = #{count} where id = #{videoId} and view_count != #{count}")
-    void updateViewCount(@Param("videoId") Long videoId,@Param("count") Integer count);
+    void updateViewCount(@Param("videoId") Long videoId,@Param("count") Long count);
 
     /**
      * 根据id获取视频播放量
@@ -95,6 +95,11 @@ public interface VideoMapper {
     List<VideoCacheDto> findFeed(@Param("cursorTime") LocalDateTime cursorTime,@Param("cursorId") Long cursorId,@Param("size") int size);
 
     /**
+     * 获取热门视频列表
+     */
+    List<VideoCacheDto> findHotFeed(@Param("cursorScore") Long cursorScore, @Param("cursorId") Long cursorId, @Param("size") int size);
+
+    /**
      * 获取用户点赞视频列表
      */
     List<VideoCacheDto> findLikedByUser(@Param("cursorTime") LocalDateTime cursorTime,@Param("cursorId") Long cursorId
@@ -117,5 +122,14 @@ public interface VideoMapper {
      */
     void updateFavoriteCountFullAmount();
 
+    /**
+     * 根据id列表获取视频
+     */
     List<VideoCacheDto> findByIds(@Param("ids") List<Long> ids);
+
+    /**
+     * 重新计算视频热度分数
+     */
+    void recomputeHotScore();
+
 }

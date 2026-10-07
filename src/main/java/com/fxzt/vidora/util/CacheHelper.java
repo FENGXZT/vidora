@@ -165,6 +165,14 @@ public class CacheHelper {
         }
     }
 
+    /**
+     * 添加缓存
+     * @param key 缓存key
+     * @param member 数据
+     * @param score 分数
+     * @param maxCount 最大数量
+     * @param ttl 过期时间
+     */
     public Long zAddMonotonicWithTtl(String key, String member, long score,int maxCount,  Duration ttl){
         if (ttl == null || ttl.isZero() || ttl.isNegative()){
             log.warn("TTL 非法，跳过写入：key={}, ttl={}", key, ttl);
@@ -192,6 +200,14 @@ public class CacheHelper {
         }
     }
 
+    /**
+     * 获取缓存
+     * @param key 缓存key
+     * @param min 分数下限
+     * @param max 分数上限
+     * @param count 返回数量
+     * @return 数据
+     */
     public List<ScoredMember> zReverseRangeByScore(String key,double min, double max,int count){
         try{
             Set<ZSetOperations.TypedTuple<String>> tuples = redis.opsForZSet()
@@ -211,8 +227,20 @@ public class CacheHelper {
         }
     }
 
+    /**
+     * 带分数的成员
+     */
     public  record ScoredMember(String member, double score){}
 
+    /**
+     * Lua脚本
+     * 1. 获取当前最大分数
+     * 2. 如果有最大分数，则将分数加1
+     * 3. 添加成员
+     * 4. 删除过期成员
+     * 5. 设置过期时间
+     * 6. 返回分数
+     */
     private static final String LUA_SCRIPT = """
             local top = redis.call('ZREVRANGE', KEYS[1], 0, 0, 'WITHSCORES')
             local score = tonumber(ARGV[1])

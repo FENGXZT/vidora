@@ -26,4 +26,9 @@ public interface UpdateMySqlService {
      * 全量更新视频收藏数
      */
     void updateFavoriteCountFullAmount();
+
+    /**
+     * 重新计算热门视频分数
+     */
+    void recomputeHotScore();
 }

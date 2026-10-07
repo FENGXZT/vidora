@@ -1,0 +1,24 @@
+# 构建上下文里不要的东西（越小越快，也避免把密钥塞进镜像）
+.git
+.gitignore
+.idea
+.vscode
+*.iml
+
+# Maven 产物：镜像里用的是"构建阶段新打的 jar"，本地的 target 没必要传
+target/
+
+# 日志与本地数据
+logs/
+*.log
+
+# ★★★ 密钥文件：绝对不能进镜像
+.env
+.env.*
+!.env.example
+
+# 文档与部署脚本（compose 里已经用了，但构建上下文不需要）
+docs/
+ops/
+*.md
+docker-compose*.yml

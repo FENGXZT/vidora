@@ -1,6 +1,7 @@
 package com.fxzt.vidora.util;
 
 import com.fxzt.vidora.pojo.vo.CursorPage;
+import com.fxzt.vidora.pojo.vo.ScoreCursorPageWithId;
 import com.fxzt.vidora.service.FileService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,15 +25,7 @@ public class CursorPageChange {
     public  <T,R> CursorPage<R> toCursorPage(CursorPage<T> cached, Supplier<R> factory
             , Function<T,String> keyGet, BiConsumer<R,String> keySet
             , BiConsumer<R, LocalDateTime> timeSet, Function<T,LocalDateTime> timeGet){
-        List<R> list = cached.getItems().stream().
-                map(item->{
-                    R vo = factory.get();
-                    BeanUtils.copyProperties(item, vo);
-                    String Url = keyGet.apply(item) != null ? fileService.presign(imageBucket, keyGet.apply(item), 10) : null;
-                    keySet.accept(vo, Url);
-                    timeSet.accept(vo, timeGet.apply(item));
-                    return vo;
-                }).toList();
+        List<R> list = mapItems(cached.getItems(), factory, keyGet, keySet, timeSet, timeGet);
         return new CursorPage<>(list,cached.getHasMore(),cached.getNextCursor(),cached.getNextCursorId());
     }
 
@@ -48,5 +41,33 @@ public class CursorPageChange {
             nextCursorId = idGetter.apply(last);
         }
         return new CursorPage<T>(cached,hasMore,nextCursor,nextCursorId);
+    }
+
+    public <T,R> ScoreCursorPageWithId<R> toHotCursorPage(ScoreCursorPageWithId<T> cached, Supplier<R> factory
+            , Function<T,String> keyGet, BiConsumer<R,String> keySet
+            , BiConsumer<R, LocalDateTime> timeSet, Function<T,LocalDateTime> timeGet){
+        List<R> list = mapItems(cached.getItems(), factory, keyGet, keySet, timeSet, timeGet);
+        return new ScoreCursorPageWithId<>(list, cached.getHasMore(), cached.getNextCursorScore(), cached.getNextCursorId());
+    }
+
+    private <T, R> List<R> mapItems(List<T> src,
+                                    Supplier<R> factory,
+                                    Function<T, String> keyGet,
+                                    BiConsumer<R, String> keySet,
+                                    BiConsumer<R, LocalDateTime> timeSet,
+                                    Function<T, LocalDateTime> timeGet) {
+        return src.stream()
+                .map(item -> {
+                    R vo = factory.get();
+                    BeanUtils.copyProperties(item, vo);
+
+                    String key = keyGet.apply(item);
+                    String url = key != null ? fileService.presign(imageBucket, key, 10) : null;
+                    keySet.accept(vo, url);
+
+                    timeSet.accept(vo, timeGet.apply(item));
+                    return vo;
+                })
+                .toList();
     }
 }

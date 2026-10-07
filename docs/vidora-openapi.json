@@ -3,7 +3,7 @@
   "info": {
     "title": "Vidora API",
     "version": "0.0.4-SNAPSHOT",
-    "description": "Vidora · 视频投稿与播放平台 —— 后端接口定义与测试数据（OpenAPI 3.0.3）。\n\n> **本版对齐 2026-10-04 的代码**：新增**收藏链路**、**首页推荐流（游标分页）**、**用户点赞/收藏列表**；鉴权支持标准 `Authorization: Bearer`；4 个读接口开放匿名访问；异常处理补齐 400/404/405。当前共 **26 条路径 / 30 个操作**。\n\n## 相对上一版（0.0.3）的变化\n\n**新增接口**\n- `POST /video/{id}/favorite`、`DELETE /video/{id}/favorite` —— 收藏 / 取消收藏（幂等，同点赞的设计）。\n- `GET /video/feed` —— 首页推荐流，**游标分页**，`sort=latest` 已实现、`sort=hot` 会返回业务异常「推荐流暂未上线」。\n- `GET /user/liked` —— 当前用户点赞过的视频（游标分页）。\n- `GET /user/favorites` —— 当前用户收藏过的视频（游标分页）。\n- `GET /user/me` —— 当前登录用户信息（昵称 / 头像预签名 URL / 账号）。\n- `PUT /user/profile` —— 修改昵称 / 头像；跨字段校验「至少改一项」，改了昵称会 bump 搜索缓存版本号。\n- `POST /user/{id}/follow`、`DELETE /user/{id}/follow` —— 关注 / 取消关注。**都是幂等**的（唯一键 + `ON DUPLICATE KEY UPDATE`；重复关注仍返回 `code=1`）。\n- `GET /user/following` —— 我关注的人（用户维度游标分页，返回 `UserListItem`）。\n- `GET /user/history` —— 浏览历史；**分数游标**分页，`data` 恰好 3 字段、item 恰好 4 字段（前端 checkapi.mjs 强断言）。\n\n**移除接口**\n- 🔴 **`POST /video` 已删除**。投稿不再有独立的\"创建视频\"接口：视频记录现在由 **`POST /upload/video/init` 直接创建**（`FileServiceImpl` 内部调 `addVideo`），`complete` 后置为 `status=2` 可播放。旧的 `VideoCreateDTo` 已不存在。\n\n**行为变更**\n- 🔑 **鉴权**：拦截器现在**优先读 `Authorization: Bearer <jwt>`**，读不到再回退到旧的 `token` 自定义头。两者都支持，**推荐用 Bearer**（Apifox/Postman 可原生识别，也避免了上一版文档里\"两个同名 `token` 头被合并\"的坑）。\n- 🔓 **匿名访问**：`GET /video`、`GET /video/feed`、`GET /video/{id}`、`GET /video/{id}/comment` 四个读接口**没有 token 也能调**；带 token 时同一接口会额外返回个性化字段（`liked`/`favorited`/`mine`）。其余接口仍需登录。\n- ✅ **异常处理补齐**：参数校验/类型不匹配/JSON 解析失败现在返回 **400**，方法不支持返回 **405**，路径不存在返回 **404**（此前这些全是 200 或 500）。详见下方状态码表。\n- ✅ **`POST /upload/video/complete` 不再需要传分片数组**：签名从 `(Long id, @RequestBody List<PartVo> parts)` 变成 **`(Long id)`**，服务端自己用 S3 `listParts` 取真实分片。\n- ✅ **`CommentVo` 新增 `mine` 字段**（1 = 当前登录用户发的评论，匿名请求恒为 0）。\n- ✅ `video` 表新增 `declared_size` 列（记录 init 时声明的文件大小）。\n- ✅ 评论游标分页已修复（`and` 位置正确），深游标可正常翻页；`DELETE /video/{id}/comment/{commentId}` 已能真实删除。\n\n## 导入 Apifox\nApifox → 项目设置 → 导入数据 → **OpenAPI/Swagger** → 选择本文件。\n\n导入后**每个需要登录的接口都已经预填好请求头** `Authorization: Bearer {{token}}`，只需做一次环境变量配置：\n\n1. **建环境变量**：Apifox → 环境管理 → 新建环境（如「本地」）→ 添加变量 `token`，值先留空，第 2 步会自动写入。\n2. **让登录接口自动写入 token**：打开 `POST /user/login` → **后置操作 → 添加后置操作**，两种方式任选：\n   - **提取变量**：来源 `Response Body`，表达式 `$.data.token`，变量名 `token`，作用域选**环境变量**。\n   - **自定义脚本**（直接粘贴）：\n     ```javascript\n     const j = pm.response.json();\n     if (j && j.code === 1 && j.data && j.data.token) {\n       pm.environment.set(\"token\", j.data.token);\n       console.log(\"token 已写入环境变量，长度 = \" + j.data.token.length);\n     }\n     ```\n3. **其余接口不用管**：已经带好 `Authorization: Bearer {{token}}`，跑完登录直接跑即可。\n\n> ⚠️ **请把 Apifox 的「Auth」保持为「无」。** 本文件**故意不在接口上声明 `security`** —— 否则 Apifox 会再自动创建一个 Auth 条目，与服务端的单一 `Authorization` 头冲突（两个同名头被 Tomcat 合并成 `Bearer x, Bearer x` → 全部 401）。旧版文档踩过这个坑。\n>\n> 4 个匿名读接口（`GET /video`、`GET /video/feed`、`GET /video/{id}`、`GET /video/{id}/comment`）的 `Authorization` 是**可选**的：带上会多返回 `liked` / `favorited` / `mine`，不带也照常返回。\n## 鉴权细节\n- 服务端**优先读 `Authorization: Bearer <jwt>`**（标准写法）；读不到再回退到旧的 `token: <jwt>` 自定义头（走这个头时**不要**加 `Bearer ` 前缀）。\n- JWT 为 **HS256**，有效期 **12 小时**，载荷含 `id`、`username`、`iat`、`exp`。\n- 拦截器 `addPathPatterns(\"/**\")`，排除 `/user/login`、`/user/register`；另有 4 个只读接口允许匿名访问。\n- ⚠️ **匿名读接口带了无效 token 不会报 401，而是静默降级为匿名**（返回 200，`liked`/`favorited`/`mine` 归 0）。非匿名接口带了无效 token 才会 401。\n- 空的 `Authorization` / `token` 头会被当作「未登录」（401），不会 500。\n- 没有登出/吊销机制：token 一旦签发，12 小时内始终有效（改密码、封禁都不影响它）。\n## 统一返回结构\n所有接口返回同一信封 `Result`：`{\"code\": 1|0, \"data\": ..., \"message\": \"...\"}`。`code = 1` 成功，`code = 0` 失败。\n\n⚠️ **HTTP 状态码与 `code` 必须同时判断**（本版已大幅修正，但与常见 REST 习惯仍有差异）：\n\n| 场景 | HTTP | code | message 示例 |\n|---|---|---|---|\n| 成功 | 200 | 1 | `success` |\n| **业务失败**（视频不存在、评论不存在、无权限删除、收藏失败、`sort=hot`…） | **200** | 0 | `业务异常： 视频不存在` |\n| 参数校验失败（`@Valid`） | 400 | 0 | `keyword 关键字只能包含中文、字母、数字、空格、下划线、横线和点` |\n| 参数类型不匹配（如 `/video/abc`） | 400 | 0 | `参数 id 类型不正确` |\n| 请求体 JSON 格式错误 | 400 | 0 | `请求体格式错误` |\n| 未登录 / token 无效 / 签名无效 / 已过期 | 401 | 0 | `权限异常： 未登录` |\n| 路径不存在 | 404 | 0 | `资源不存在` |\n| 请求方法不支持 | 405 | 0 | `请求方式不支持: PUT` |\n| 文件过大 / 类型不支持（上传链路） | 413 / 415 | 0 | `上传失败： 视频太大` |\n| 未预期异常 | 500 | 0 | `系统繁忙，请稍后重试` |\n\n> ⚠️ **业务失败仍是 `HTTP 200 + code=0`**，这是本版唯一没有统一的语义。前端与网关如果只看 HTTP 状态码，会把「无权限删除」「视频不存在」当成成功。\n\n## 已知问题（已对照 2026-10-04 的代码逐条核实）\n> 本节**只保留当前代码里仍然存在**的问题，已修复的不再列出。\n\n1. ⚠️ **`GET /video/{id}/comment` 不校验视频是否存在**：给不存在的视频查评论返回 `code=1` + 空列表，而不是「视频不存在」。\n2. ⚠️ **Redis 不可用时 `GET /video/{id}` 返回 500**：播放量那段是 `StringRedisTemplate` 裸调用（`redis.opsForValue()`），没有像 `CacheHelper` 那样降级；其余接口在 Redis 挂掉时都能降级返回。\n3. ⚠️ **`?size=` 传空值会让评论列表 500**：`CommentPageDto.size` 被 Spring 绑成 `null`（默认值 20 被覆盖），`getSize()+1` 拆箱 NPE。**不传该参数则用默认值 20，正常。**\n4. ⚠️ **评论缓存键不含 `size` / `cursorTime`**：对同一个 `cursorId` 先请求 `size=1` 再请求 `size=20`，第二次会命中第一次的缓存，只能拿到 1 条（页大小被先到的请求锁定 30 分钟）。\n5. ⚠️ **秒传不区分用户**：`findReusableByHash(fileHash)` 不带 user 过滤，任意登录用户只要知道某公开视频的 `fileHash`（= 文件 MD5）就能触发秒传、复用别人的对象；`fileHash` 也完全由客户端提供、服务端从不重算。（已新增「文件大小与首次声明不一致」的校验，收窄了利用面。）\n6. ℹ️ `GET /test`、`GET /test/redis`、`POST /test/echo` 是开发期探针，**仍留在生产代码里**（需登录才能调，`/test/redis` 会真实写 Redis 并回显内部键值）。\n## 缓存与预签名说明\n- 库里只存 object key，不存 URL。`coverUrl` / `videoUrl` / `creatorCoverUrl` / `avatarUrl` 都是**每次响应实时生成的预签名 URL**，有效期：列表与推荐流封面 **10 分钟**、详情封面与头像 **30 分钟**、视频 **100 分钟**。\n- 桶是**私有**的，直接用裸对象地址会 403，必须用返回的预签名 URL。\n- 缓存键（便于排查）：详情 `vidora:video:detail:{id}`、列表 `vidora:video:search:{version}:...`、我的投稿 `vidora:video:myvideo:search:{userId}:...`、推荐流 `vidora:video:feed:{sort}:{cursor}:{size}`、评论 `vidora:video:comments:{version}:{videoId}:{cursorId}`、播放量 `vidora:video:play:{id}`。",
+    "description": "Vidora · 视频投稿与播放平台 —— 后端接口定义与测试数据（OpenAPI 3.0.3）。\n\n> **本版对齐 2026-10-04 的代码**：新增**收藏链路**、**首页推荐流（游标分页）**、**用户点赞/收藏列表**；鉴权支持标准 `Authorization: Bearer`；4 个读接口开放匿名访问；异常处理补齐 400/404/405。当前共 **26 条路径 / 30 个操作**。\n\n## 相对上一版（0.0.3）的变化\n\n**新增接口**\n- `POST /video/{id}/favorite`、`DELETE /video/{id}/favorite` —— 收藏 / 取消收藏（幂等，同点赞的设计）。\n- `GET /video/feed` —— 首页推荐流，**两种排序两种结构**：`sort=latest`（时间游标）与 `sort=hot`（热度分游标，基于 `hot_score`，每 5 分钟重算）。\n- `GET /user/liked` —— 当前用户点赞过的视频（游标分页）。\n- `GET /user/favorites` —— 当前用户收藏过的视频（游标分页）。\n- `GET /user/me` —— 当前登录用户信息（昵称 / 头像预签名 URL / 账号）。\n- `PUT /user/profile` —— 修改昵称 / 头像；跨字段校验「至少改一项」，改了昵称会 bump 搜索缓存版本号。\n- `POST /user/{id}/follow`、`DELETE /user/{id}/follow` —— 关注 / 取消关注。**都是幂等**的（唯一键 + `ON DUPLICATE KEY UPDATE`；重复关注仍返回 `code=1`）。\n- `GET /user/following` —— 我关注的人（用户维度游标分页，返回 `UserListItem`）。\n- `GET /user/history` —— 浏览历史；**分数游标**分页，`data` 恰好 3 字段、item 恰好 4 字段（前端 checkapi.mjs 强断言）。\n\n**移除接口**\n- 🔴 **`POST /video` 已删除**。投稿不再有独立的\"创建视频\"接口：视频记录现在由 **`POST /upload/video/init` 直接创建**（`FileServiceImpl` 内部调 `addVideo`），`complete` 后置为 `status=2` 可播放。旧的 `VideoCreateDTo` 已不存在。\n\n**行为变更**\n- 🔑 **鉴权**：拦截器现在**优先读 `Authorization: Bearer <jwt>`**，读不到再回退到旧的 `token` 自定义头。两者都支持，**推荐用 Bearer**（Apifox/Postman 可原生识别，也避免了上一版文档里\"两个同名 `token` 头被合并\"的坑）。\n- 🔓 **匿名访问**：`GET /video`、`GET /video/feed`、`GET /video/{id}`、`GET /video/{id}/comment` 四个读接口**没有 token 也能调**；带 token 时同一接口会额外返回个性化字段（`liked`/`favorited`/`mine`）。其余接口仍需登录。\n- ✅ **异常处理补齐**：参数校验/类型不匹配/JSON 解析失败现在返回 **400**，方法不支持返回 **405**，路径不存在返回 **404**（此前这些全是 200 或 500）。详见下方状态码表。\n- ✅ **`POST /upload/video/complete` 不再需要传分片数组**：签名从 `(Long id, @RequestBody List<PartVo> parts)` 变成 **`(Long id)`**，服务端自己用 S3 `listParts` 取真实分片。\n- ✅ **`CommentVo` 新增 `mine` 字段**（1 = 当前登录用户发的评论，匿名请求恒为 0）。\n- ✅ `video` 表新增 `declared_size` 列（记录 init 时声明的文件大小）。\n- ✅ 评论游标分页已修复（`and` 位置正确），深游标可正常翻页；`DELETE /video/{id}/comment/{commentId}` 已能真实删除。\n\n## 导入 Apifox\nApifox → 项目设置 → 导入数据 → **OpenAPI/Swagger** → 选择本文件。\n\n导入后**每个需要登录的接口都已经预填好请求头** `Authorization: Bearer {{token}}`，只需做一次环境变量配置：\n\n1. **建环境变量**：Apifox → 环境管理 → 新建环境（如「本地」）→ 添加变量 `token`，值先留空，第 2 步会自动写入。\n2. **让登录接口自动写入 token**：打开 `POST /user/login` → **后置操作 → 添加后置操作**，两种方式任选：\n   - **提取变量**：来源 `Response Body`，表达式 `$.data.token`，变量名 `token`，作用域选**环境变量**。\n   - **自定义脚本**（直接粘贴）：\n     ```javascript\n     const j = pm.response.json();\n     if (j && j.code === 1 && j.data && j.data.token) {\n       pm.environment.set(\"token\", j.data.token);\n       console.log(\"token 已写入环境变量，长度 = \" + j.data.token.length);\n     }\n     ```\n3. **其余接口不用管**：已经带好 `Authorization: Bearer {{token}}`，跑完登录直接跑即可。\n\n> ⚠️ **请把 Apifox 的「Auth」保持为「无」。** 本文件**故意不在接口上声明 `security`** —— 否则 Apifox 会再自动创建一个 Auth 条目，与服务端的单一 `Authorization` 头冲突（两个同名头被 Tomcat 合并成 `Bearer x, Bearer x` → 全部 401）。旧版文档踩过这个坑。\n>\n> 4 个匿名读接口（`GET /video`、`GET /video/feed`、`GET /video/{id}`、`GET /video/{id}/comment`）的 `Authorization` 是**可选**的：带上会多返回 `liked` / `favorited` / `mine`，不带也照常返回。\n## 鉴权细节\n- 服务端**优先读 `Authorization: Bearer <jwt>`**（标准写法）；读不到再回退到旧的 `token: <jwt>` 自定义头（走这个头时**不要**加 `Bearer ` 前缀）。\n- JWT 为 **HS256**，有效期 **12 小时**，载荷含 `id`、`username`、`iat`、`exp`。\n- 拦截器 `addPathPatterns(\"/**\")`，排除 `/user/login`、`/user/register`；另有 4 个只读接口允许匿名访问。\n- ⚠️ **匿名读接口带了无效 token 不会报 401，而是静默降级为匿名**（返回 200，`liked`/`favorited`/`mine` 归 0）。非匿名接口带了无效 token 才会 401。\n- 空的 `Authorization` / `token` 头会被当作「未登录」（401），不会 500。\n- 没有登出/吊销机制：token 一旦签发，12 小时内始终有效（改密码、封禁都不影响它）。\n## 统一返回结构\n所有接口返回同一信封 `Result`：`{\"code\": 1|0, \"data\": ..., \"message\": \"...\"}`。`code = 1` 成功，`code = 0` 失败。\n\n⚠️ **HTTP 状态码与 `code` 必须同时判断**（本版已大幅修正，但与常见 REST 习惯仍有差异）：\n\n| 场景 | HTTP | code | message 示例 |\n|---|---|---|---|\n| 成功 | 200 | 1 | `success` |\n| **业务失败**（视频不存在、评论不存在、无权限删除、收藏失败、`sort=hot`…） | **200** | 0 | `业务异常： 视频不存在` |\n| 参数校验失败（`@Valid`） | 400 | 0 | `keyword 关键字只能包含中文、字母、数字、空格、下划线、横线和点` |\n| 参数类型不匹配（如 `/video/abc`） | 400 | 0 | `参数 id 类型不正确` |\n| 请求体 JSON 格式错误 | 400 | 0 | `请求体格式错误` |\n| 未登录 / token 无效 / 签名无效 / 已过期 | 401 | 0 | `权限异常： 未登录` |\n| 路径不存在 | 404 | 0 | `资源不存在` |\n| 请求方法不支持 | 405 | 0 | `请求方式不支持: PUT` |\n| 文件过大 / 类型不支持（上传链路） | 413 / 415 | 0 | `上传失败： 视频太大` |\n| 未预期异常 | 500 | 0 | `系统繁忙，请稍后重试` |\n\n> ⚠️ **业务失败仍是 `HTTP 200 + code=0`**，这是本版唯一没有统一的语义。前端与网关如果只看 HTTP 状态码，会把「无权限删除」「视频不存在」当成成功。\n\n## 已知问题（已对照 2026-10-04 的代码逐条核实）\n> 本节**只保留当前代码里仍然存在**的问题，已修复的不再列出。\n\n1. ⚠️ **`GET /video/{id}/comment` 不校验视频是否存在**：给不存在的视频查评论返回 `code=1` + 空列表，而不是「视频不存在」。\n2. ⚠️ **Redis 不可用时 `GET /video/{id}` 返回 500**：播放量那段是 `StringRedisTemplate` 裸调用（`redis.opsForValue()`），没有像 `CacheHelper` 那样降级；其余接口在 Redis 挂掉时都能降级返回。\n3. ⚠️ **`?size=` 传空值会让评论列表 500**：`CommentPageDto.size` 被 Spring 绑成 `null`（默认值 20 被覆盖），`getSize()+1` 拆箱 NPE。**不传该参数则用默认值 20，正常。**\n4. ⚠️ **评论缓存键不含 `size` / `cursorTime`**：对同一个 `cursorId` 先请求 `size=1` 再请求 `size=20`，第二次会命中第一次的缓存，只能拿到 1 条（页大小被先到的请求锁定 30 分钟）。\n5. ⚠️ **秒传不区分用户**：`findReusableByHash(fileHash)` 不带 user 过滤，任意登录用户只要知道某公开视频的 `fileHash`（= 文件 MD5）就能触发秒传、复用别人的对象；`fileHash` 也完全由客户端提供、服务端从不重算。（已新增「文件大小与首次声明不一致」的校验，收窄了利用面。）\n6. ℹ️ `GET /test`、`GET /test/redis`、`POST /test/echo` 是开发期探针，**仍留在生产代码里**（需登录才能调，`/test/redis` 会真实写 Redis 并回显内部键值）。\n## 缓存与预签名说明\n- 库里只存 object key，不存 URL。`coverUrl` / `videoUrl` / `creatorCoverUrl` / `avatarUrl` 都是**每次响应实时生成的预签名 URL**，有效期：列表与推荐流封面 **10 分钟**、详情封面与头像 **30 分钟**、视频 **100 分钟**。\n- 桶是**私有**的，直接用裸对象地址会 403，必须用返回的预签名 URL。\n- 缓存键（便于排查）：详情 `vidora:video:detail:{id}`、列表 `vidora:video:search:{version}:...`、我的投稿 `vidora:video:myvideo:search:{userId}:...`、推荐流 `vidora:video:feed:{sort}:{cursor}:{size}`、评论 `vidora:video:comments:{version}:{videoId}:{cursorId}`、播放量 `vidora:video:play:{id}`。",
     "contact": {
       "name": "Vidora"
     }
@@ -29,7 +29,7 @@
     },
     {
       "name": "推荐流 / Feed",
-      "description": "首页推荐流，游标分页。`sort=latest` 可用；`sort=hot` 未实现，调用会返回业务异常「推荐流暂未上线」。**可匿名访问。**"
+      "description": "首页推荐流。`sort=latest` 按发布时间、`sort=hot` 按热度分（`hot_score`，每 5 分钟重算，有约 5~6 分钟延迟）。两种 sort 的**游标字段与响应结构都不同**，详见接口说明。**需要登录。**"
     },
     {
       "name": "互动 · 点赞 / Like",
@@ -45,7 +45,7 @@
     },
     {
       "name": "上传 · 普通 / Simple upload",
-      "description": "同步上传：文件直传对象存储，**只返回 object key，不落库**。用于上传封面/头像这类小文件。"
+      "description": "同步上传：文件直传对象存储，**只返回 object key，不落库**。视频上限 1GB，封面 50MB、头像 20MB。"
     },
     {
       "name": "上传 · 分片 / Multipart upload",
@@ -423,7 +423,7 @@
           "用户 / User"
         ],
         "summary": "我点赞过的视频（游标分页）",
-        "description": "返回当前登录用户点赞过的、且 `status=2` 的视频列表，按**点赞时间倒序**（`video_like.create_time desc, video_like.id desc`）。\n\n- 需要登录。`cursorTime` 与 `cursorId` **必须同时传或同时不传**，只传一个会返回 `业务异常： 游标参数不完整`。\n- 取上一页返回的 `nextCursor` / `nextCursorId` 作为下一页入参即可翻页。\n- `size` 范围 1~50，默认 20。\n- 封面 `coverUrl` 为预签名 URL，有效期 10 分钟。",
+        "description": "返回当前登录用户点赞过的、且 `status=2` 的视频列表，按**点赞时间倒序**（`video_like.create_time desc, video_like.id desc`）。\n\n- 需要登录。`cursorTime` 与 `cursorId` **必须同时传或同时不传**，只传一个会返回 `业务异常： 游标参数不完整`。\n- 取上一页返回的 `nextCursor` / `nextCursorId` 作为下一页入参即可翻页。\n- `size` 范围 1~50，默认 20。\n- 封面 `coverUrl` 为 10 分钟预签名 URL。`likeTime` = 点赞时间（本列表的排序/游标依据）；同项的 `favoriteTime` 恒为 null。",
         "operationId": "listMyLikedVideos",
         "parameters": [
           {
@@ -509,7 +509,7 @@
           "用户 / User"
         ],
         "summary": "我收藏过的视频（游标分页）",
-        "description": "返回当前登录用户收藏过的、且 `status=2` 的视频列表，按**收藏时间倒序**（`video_favorite.create_time desc, video_favorite.id desc`）。\n\n参数与翻页方式同 `GET /user/liked`。",
+        "description": "返回当前登录用户收藏过的、且 `status=2` 的视频列表，按**收藏时间倒序**（`video_favorite.create_time desc, video_favorite.id desc`）。\n\n参数与翻页方式同 `GET /user/liked`。`favoriteTime` = 收藏时间（本列表的排序/游标依据）；同项的 `likeTime` 恒为 null。",
         "operationId": "listMyFavoriteVideos",
         "parameters": [
           {
@@ -1215,7 +1215,7 @@
           "推荐流 / Feed"
         ],
         "summary": "首页推荐流（游标分页）",
-        "description": "按发布时间倒序的推荐流（`status=2`，`order by create_time desc, id desc`），用**复合游标**翻页：取响应里的 `nextCursor` / `nextCursorId` 原样作为下一页的 `cursorTime` / `cursorId`。\n\n- **可匿名访问。**\n- `sort` 只支持 `latest`；传 `hot` 会返回 `业务异常： 推荐流暂未上线`（HTTP 200 + code=0）。传其他值返回 400（`sort 参数非法`）。\n- `cursorTime` 与 `cursorId` 必须成对出现，否则返回 `业务异常： 游标参数不完整`。\n- `size` 1~50，默认 20。\n- 结果缓存 5 分钟，键 `vidora:video:feed:{sort}:{cursor}:{size}`；封面为 10 分钟预签名 URL。",
+        "description": "首页推荐流，**两种排序，返回结构不同**。需要登录（非匿名）。\n\n| `sort` | 排序依据 | `data` 的字段 |\n|---|---|---|\n| `latest`（默认） | `create_time desc, id desc` | `items` / `hasMore` / **`nextCursor`** / `nextCursorId` |\n| `hot` | `hot_score desc, id desc` | `items` / `hasMore` / **`nextCursorScore`** / `nextCursorId` |\n\n**游标参数必须与 sort 匹配**（服务端逐项校验，不匹配会报 `业务异常： 游标参数不完整`）：\n\n- `sort=latest`：翻页用上一页的 `nextCursor` + `nextCursorId` → 传回 `cursorTime` + `cursorId`（**两者必须成对**）。\n- `sort=hot`：翻页用上一页的 `nextCursorScore` + `nextCursorId` → 传回 `cursorScore` + `cursorId`（**两者必须成对**）。\n\n**`hot_score` 是怎么算的**（`VideoMapper.recomputeHotScore`）：\n\n```\nhot_score = LEAST(4000000000,\n                   ROUND((view_count*1 + like_count*3 + favorite_count*5)\n                         / POW(TIMESTAMPDIFF(HOUR, create_time, NOW()) + 2, 1.5) * 1000))\n```\n\n即：播放×1、点赞×3、收藏×5 加权，再按\"发布小时数 + 2\"的 1.5 次方做时间衰减；`LEAST(4000000000, ...)` 是防止 MySQL unsigned 溢出（溢出会导致整条 UPDATE 失败、热度静默冻结）。\n\n- 该任务 `@Scheduled(fixedDelay = 300_000)`，**每 5 分钟重算一次**，且只更新 `hot_score` 有变化的、`status=2` 的行。\n- 而 `view_count` / `like_count` / `favorite_count` 本身也是异步落库的（30s / 60s / 60s）。\n- ⇒ **热榜最长约有 5~6 分钟的延迟**，刚点赞/刚看过的视频不会立刻出现在榜单上。做联调时别把它当实时榜单。\n\n其他行为：\n\n- `size` 1~50，默认 20。\n- 结果缓存 **5 分钟**，键 `vidora:video:feed:{sort}:{cursor}:{size}`（`latest` 与 `hot` 的键不会互相污染）。\n- 该 feed 对所有人一致、无个性化，所以能共享缓存；`items` 里 **`likeTime` / `favoriteTime` 恒为 null**，也不返回 `liked` / `favorited`。\n- `coverUrl` 为 10 分钟预签名 URL。\n- `sort` 传其他值返回 **HTTP 400**（`sort 参数非法`）。",
         "operationId": "getVideoFeed",
         "parameters": [
           {
@@ -1240,7 +1240,7 @@
               ],
               "default": "latest"
             },
-            "description": "排序方式，目前只有 latest 可用"
+            "description": "排序方式。latest=按发布时间；hot=按热度分（已实现，不再返回\"暂未上线\"）"
           },
           {
             "name": "size",
@@ -1261,7 +1261,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "上一页的 nextCursor（ISO 8601，带 T）"
+            "description": "**仅 sort=latest 用**：上一页的 nextCursor（ISO 8601 带 T）。必须与 cursorId 成对出现"
           },
           {
             "name": "cursorScore",
@@ -1271,7 +1271,7 @@
               "type": "integer",
               "format": "int64"
             },
-            "description": "热榜游标，预留字段，当前不生效"
+            "description": "**仅 sort=hot 用**：上一页的 nextCursorScore（hot_score）。必须与 cursorId 成对出现"
           },
           {
             "name": "cursorId",
@@ -1281,7 +1281,7 @@
               "type": "integer",
               "format": "int64"
             },
-            "description": "上一页的 nextCursorId"
+            "description": "上一页的 nextCursorId。sort=latest 时与 cursorTime 配对；sort=hot 时与 cursorScore 配对"
           }
         ],
         "responses": {
@@ -1290,11 +1290,18 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResultVideoCursorPage"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ResultVideoCursorPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ResultVideoScoreCursorPage"
+                    }
+                  ]
                 },
                 "examples": {
-                  "firstPage": {
-                    "summary": "第一页",
+                  "latest": {
+                    "summary": "sort=latest（时间游标）",
                     "value": {
                       "code": 1,
                       "data": {
@@ -1305,23 +1312,50 @@
                             "coverUrl": "http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...",
                             "duration": 600,
                             "viewCount": 12,
-                            "createTime": "2026-10-04T12:00:00",
-                            "nickName": "小李"
+                            "createTime": "2026-10-07T12:00:00",
+                            "nickName": "小李",
+                            "likeTime": null,
+                            "favoriteTime": null
                           }
                         ],
                         "hasMore": true,
-                        "nextCursor": "2026-10-04T12:00:00",
+                        "nextCursor": "2026-10-07T12:00:00",
                         "nextCursorId": 9876
                       },
                       "message": "success"
                     }
                   },
-                  "hotNotImplemented": {
-                    "summary": "sort=hot（未实现）",
+                  "hot": {
+                    "summary": "sort=hot（分数游标）",
+                    "value": {
+                      "code": 1,
+                      "data": {
+                        "items": [
+                          {
+                            "id": 1,
+                            "title": "第一个视频",
+                            "coverUrl": "http://localhost:9000/vidora-image/c/01.jpg?X-Amz-...",
+                            "duration": 600,
+                            "viewCount": 1159947,
+                            "createTime": "2026-08-01T10:00:00",
+                            "nickName": "小李",
+                            "likeTime": null,
+                            "favoriteTime": null
+                          }
+                        ],
+                        "hasMore": true,
+                        "nextCursorScore": 128374,
+                        "nextCursorId": 1
+                      },
+                      "message": "success"
+                    }
+                  },
+                  "invalidSort": {
+                    "summary": "sort 非法",
                     "value": {
                       "code": 0,
                       "data": null,
-                      "message": "业务异常： 推荐流暂未上线"
+                      "message": "业务异常： sort 参数非法：xxx"
                     }
                   }
                 }
@@ -1941,7 +1975,7 @@
           "上传 · 普通 / Simple upload"
         ],
         "summary": "上传视频文件（小文件直传）",
-        "description": "同步上传单个文件到 `vidora-video` 桶，**只返回 object key，不落库**。\n\n- 表单字段名必须是 **`file`**。\n- 扩展名白名单：视频类型；大小上限 **100MB**（`UploadScene.VIDEO`）。\n- 类型不支持返回 **415**，超限返回 **413**，都是 `上传失败： ...` 前缀。\n- 大文件请改用分片上传 `/upload/video/init` + `/part` + `/complete`。",
+        "description": "同步上传单个文件到 `vidora-video` 桶，**只返回 object key，不落库**。\n\n- 表单字段名必须是 **`file`**。\n- 扩展名白名单：视频类型；大小上限 **1GB**（`UploadScene.VIDEO`，2026-10-04 由 100MB 提高，与 HTTP 层 `spring.servlet.multipart.max-file-size` 对齐）。\n- 类型不支持返回 **415**，超限返回 **413**，都是 `上传失败： ...` 前缀。\n- 大文件请改用分片上传 `/upload/video/init` + `/part` + `/complete`。",
         "operationId": "uploadVideoFile",
         "requestBody": {
           "required": true,
@@ -2106,7 +2140,7 @@
           "上传 · 分片 / Multipart upload"
         ],
         "summary": "初始化分片上传（★同时创建视频记录）",
-        "description": "分片上传的第一步，也是**投稿的入口**：\n\n1. 按 `fileHash` 查是否已有可复用的对象（秒传）；\n2. 查当前用户是否有同 hash 的 `status=0` 中断记录（断点续传）；\n3. 都不满足则新建 S3 Multipart Upload，并**直接往 `video` 表插入一条 `status=0` 的记录**（旧版的 `POST /video` 已删除）。\n\n`data.mode` 的取值：\n- `instant` —— 秒传命中：库里已有相同 `fileHash` 且 `status=2` 的视频，直接复用它的 object key，**不需要再传分片，直接调 `/complete`**。\n- `resume` —— 断点续传：复用当前用户之前中断的同 hash 记录。`uploadedParts` 列出已成功上传的分片号，**只补传缺失的分片**。\n- `new` —— 全新上传。`uploadedParts` 为空。\n\n`data.id` 是视频 id，后续 `part` / `complete` / `abort` 都用它作为 `id` 参数。\n`data.partSize` 是服务端建议的分片大小（5242880 = 5MB），**除最后一片外每片不能小于它**。\n\n**参数校验（本版已补齐）**：`fileSize` ≤ 0 → **HTTP 400「文件大小非法」**；`fileSize` 超过 `UploadScene.VIDEO` 的 100MB 上限 → **HTTP 413「文件太大」**；声明的大小会落库到 `declared_size`，续传时与首次声明不一致会报 `业务异常： 文件大小与首次声明不一致，请重新上传`。\n\n⚠️ 秒传不区分用户：`fileHash` 完全由客户端提供、服务端不重算，且 `findReusableByHash` 不带 user 过滤，知道某个公开视频文件 MD5 的登录用户即可触发秒传复用他人对象（见顶层「已知问题 5」）。",
+        "description": "分片上传的第一步，也是**投稿的入口**：\n\n1. 按 `fileHash` 查是否已有可复用的对象（秒传）；\n2. 查当前用户是否有同 hash 的 `status=0` 中断记录（断点续传）；\n3. 都不满足则新建 S3 Multipart Upload，并**直接往 `video` 表插入一条 `status=0` 的记录**（旧版的 `POST /video` 已删除）。\n\n`data.mode` 的取值：\n- `instant` —— 秒传命中：库里已有相同 `fileHash` 且 `status=2` 的视频，直接复用它的 object key，**不需要再传分片，直接调 `/complete`**。\n- `resume` —— 断点续传：复用当前用户之前中断的同 hash 记录。`uploadedParts` 列出已成功上传的分片号，**只补传缺失的分片**。\n- `new` —— 全新上传。`uploadedParts` 为空。\n\n`data.id` 是视频 id，后续 `part` / `complete` / `abort` 都用它作为 `id` 参数。\n`data.partSize` 是服务端建议的分片大小（5242880 = 5MB），**除最后一片外每片不能小于它**。\n\n**参数校验（本版已补齐）**：`fileSize` ≤ 0 → **HTTP 400「文件大小非法」**；`fileSize` 超过 `UploadScene.VIDEO` 的 **1GB** 上限 → **HTTP 413「文件太大」**（HTTP 层 multipart 上限也已对齐为 1GB / 整请求 1100MB）；声明的大小会落库到 `declared_size`，续传时与首次声明不一致会报 `业务异常： 文件大小与首次声明不一致，请重新上传`。\n\n⚠️ 秒传不区分用户：`fileHash` 完全由客户端提供、服务端不重算，且 `findReusableByHash` 不带 user 过滤，知道某个公开视频文件 MD5 的登录用户即可触发秒传复用他人对象（见顶层「已知问题 5」）。",
         "operationId": "initMultipartUpload",
         "requestBody": {
           "required": true,
@@ -2940,6 +2974,7 @@
           },
           "viewCount": {
             "type": "integer",
+            "format": "int64",
             "description": "播放量（本次请求已 +1）"
           },
           "likeCount": {
@@ -2981,7 +3016,7 @@
       },
       "VideoListItem": {
         "type": "object",
-        "description": "列表项（列表接口不返回 liked/favorited）",
+        "description": "列表项。注意：`likeTime` / `favoriteTime` **只有对应的个人列表接口才会填**，其他列表接口为 null（详见各接口说明）",
         "properties": {
           "id": {
             "type": "integer",
@@ -2999,7 +3034,9 @@
             "type": "integer"
           },
           "viewCount": {
-            "type": "integer"
+            "type": "integer",
+            "format": "int64",
+            "description": "播放数"
           },
           "createTime": {
             "type": "string",
@@ -3007,6 +3044,18 @@
           },
           "nickName": {
             "type": "string"
+          },
+          "likeTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "**仅 `GET /user/liked` 会填**（= 点赞时间，也就是该列表的排序/游标依据）；其他列表接口为 null"
+          },
+          "favoriteTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "**仅 `GET /user/favorites` 会填**（= 收藏时间）；其他列表接口为 null"
           }
         }
       },
@@ -3471,6 +3520,56 @@
             "type": "string",
             "format": "date-time",
             "description": "浏览时间，`yyyy-MM-ddTHH:mm:ss` 字符串（由 Redis score 还原，已去纳秒）"
+          }
+        }
+      },
+      "ResultVideoScoreCursorPage": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "data": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ScoreCursorPageWithId_VideoListItem"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ScoreCursorPageWithId_VideoListItem": {
+        "type": "object",
+        "description": "**分数 + id 复合游标**的分页结果（只有 `GET /video/feed?sort=hot` 用它）。与 CursorPage 的区别：游标是 `nextCursorScore` 而不是 `nextCursor`",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoListItem"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursorScore": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "下一页的 cursorScore（= 该条视频的 hot_score）；hasMore=false 时为 null；**原样回传**"
+          },
+          "nextCursorId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "下一页的 cursorId；与 nextCursorScore 成对使用"
           }
         }
       }

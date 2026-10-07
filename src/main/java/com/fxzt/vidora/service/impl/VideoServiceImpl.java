@@ -80,7 +80,7 @@ public class VideoServiceImpl implements VideoService {
             video.setLikeCount(videoLikeMapper.getLikeCount(id));
             cacheHelper.set(key, video, Duration.ofHours(2));
         }
-        video.setViewCount(playCount.intValue());
+        video.setViewCount(playCount);
         recordHistory(id);
         return toVo(video);
     }
@@ -220,35 +220,62 @@ public class VideoServiceImpl implements VideoService {
     @Override
     public CursorPage<VideoListItem> feedPage(FeedPageDto dto) {
         dto.normalize();
-        boolean hasTime = dto.getCursorTime() != null;
-        boolean hasId   = dto.getCursorId() != null;
-        if (hasTime != hasId) throw new BusinessException("游标参数不完整：cursorTime 与 cursorId 必须同时提供");
-        if ("hot".equals(dto.getSort()))
-            throw new BusinessException("推荐流暂未上线");
+        dto.verifyCursor();
         String key = RedisKeys.videoFeed(dto);
-        CursorPage<VideoCacheDto> cached = cacheHelper.get(key, new TypeReference<CursorPage<VideoCacheDto>>() {});
-        if (cached != null) return cursorPageChange.toCursorPage(cached,VideoListItem::new
-                ,VideoCacheDto::getCoverKey,VideoListItem::setCoverUrl
-                ,VideoListItem::setCreateTime,VideoCacheDto::getCreateTime);
+        CursorPage<VideoCacheDto> cached = cacheHelper.get(key, new TypeReference<CursorPage<VideoCacheDto>>() {
+        });
+        if (cached != null) return cursorPageChange.toCursorPage(cached, VideoListItem::new
+                , VideoCacheDto::getCoverKey, VideoListItem::setCoverUrl
+                , VideoListItem::setCreateTime, VideoCacheDto::getCreateTime);
 
-        int size = dto.getSize()+1;
-        List<VideoCacheDto> list = videoMapper.findFeed(dto.getCursorTime(),dto.getCursorId(),size);
+        int size = dto.getSize() + 1;
+        List<VideoCacheDto> list = videoMapper.findFeed(dto.getCursorTime(), dto.getCursorId(), size);
         boolean hasMore = list.size() > size - 1;
-        if (hasMore) list = list.subList(0, size-1);
+        if (hasMore) list = list.subList(0, size - 1);
 
         LocalDateTime nextCursor = null;
         Long nextCursorId = null;
-        if (!list.isEmpty()){
+        if (!list.isEmpty()) {
             VideoCacheDto last = list.getLast();
             nextCursor = last.getCreateTime();
             nextCursorId = last.getId();
         }
         CursorPage<VideoCacheDto> page = new CursorPage<>(list, hasMore, nextCursor, nextCursorId);
         cacheHelper.set(key, page, Duration.ofMinutes(5));
-        return cursorPageChange.toCursorPage(page,VideoListItem::new
-                ,VideoCacheDto::getCoverKey,VideoListItem::setCoverUrl
-                ,VideoListItem::setCreateTime,VideoCacheDto::getCreateTime);
+        return cursorPageChange.toCursorPage(page, VideoListItem::new
+                , VideoCacheDto::getCoverKey, VideoListItem::setCoverUrl
+                , VideoListItem::setCreateTime, VideoCacheDto::getCreateTime);
+
     }
+
+    @Override
+    public ScoreCursorPageWithId<VideoListItem> hotFeed(FeedPageDto dto) {
+        dto.normalize();
+        dto.verifyCursor();
+        String key = RedisKeys.videoFeed(dto);
+        ScoreCursorPageWithId<VideoCacheDto> cached = cacheHelper.get(key, new TypeReference<ScoreCursorPageWithId<VideoCacheDto>>() {
+        });
+        if (cached == null) {
+            int size = dto.getSize() + 1;
+            List<VideoCacheDto> list = videoMapper.findHotFeed(dto.getCursorScore(), dto.getCursorId(), size);
+            boolean hasMore = list.size() > size - 1;
+            if (hasMore) list = list.subList(0, size - 1);
+
+            Long nextCursorScore = null;
+            Long nextCursorId = null;
+            if (!list.isEmpty()) {
+                VideoCacheDto last = list.getLast();
+                nextCursorScore = last.getHotScore();
+                nextCursorId = last.getId();
+            }
+            cached = new ScoreCursorPageWithId<VideoCacheDto>(list,hasMore,nextCursorScore,nextCursorId);
+            cacheHelper.set(key,cached,Duration.ofMinutes(5));
+        }
+        return cursorPageChange.toHotCursorPage(cached, VideoListItem::new
+                , VideoCacheDto::getCoverKey, VideoListItem::setCoverUrl
+                , VideoListItem::setCreateTime, VideoCacheDto::getCreateTime);
+    }
+
 
     @Override
     public void videoFavorite(Long id) {
@@ -277,18 +304,6 @@ public class VideoServiceImpl implements VideoService {
             throw new BusinessException("视频取消收藏失败");
         }
     }
-
-    //转换为分页实体
-/*    private CursorPage<VideoListItem> toCursorPage(CursorPage<VideoCacheDto> cached) {
-        List<VideoListItem> list = cached.getItems().stream().
-                map(item->{
-                    VideoListItem vo = new VideoListItem();
-                    BeanUtils.copyProperties(item, vo);
-                    vo.setCoverUrl(fileService.presign(imageBucket, item.getCoverKey(), 10));
-                    return vo;
-                }).toList();
-        return new CursorPage<>(list,cached.getHasMore(),cached.getNextCursor(),cached.getNextCursorId());
-    }*/
 
     //转换为评论详细实体
     private PageCommentResult<CommentVo> toPageCommentResult(PageCommentResult<CommentCacheDto> cached) {
