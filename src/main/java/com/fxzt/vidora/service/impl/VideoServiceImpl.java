@@ -141,6 +141,7 @@ public class VideoServiceImpl implements VideoService {
             videoLikeMapper.addLike(id,userId);
             cacheHelper.add(RedisKeys.videoLikeUpdateFlag(), String.valueOf(id));
             cacheHelper.add(RedisKeys.videoLikeUsers(id),String.valueOf(userId));
+            cacheHelper.delete(RedisKeys.videoDetail(id));
         }catch (Exception e){
             log.warn("视频点赞失败{}", e.getMessage());
             throw new BusinessException("视频点赞失败");
@@ -154,6 +155,7 @@ public class VideoServiceImpl implements VideoService {
             videoLikeMapper.unlike(id, userId);
             cacheHelper.add(RedisKeys.videoLikeUpdateFlag(), String.valueOf(id));
             cacheHelper.rem(RedisKeys.videoLikeUsers(id),String.valueOf(userId));
+            cacheHelper.delete(RedisKeys.videoDetail(id));
         } catch (Exception e) {
             log.warn("视频取消点赞失败{}", e.getMessage());
             throw new BusinessException("视频取消点赞失败");
@@ -286,6 +288,7 @@ public class VideoServiceImpl implements VideoService {
             videoFavoriteMapper.addFavorite(id,userId);
             cacheHelper.add(RedisKeys.videoFavoriteUpdateFlag(), String.valueOf(id));
             cacheHelper.add(RedisKeys.videoFavoriteUsers(id),String.valueOf(userId));
+            cacheHelper.delete(RedisKeys.videoDetail(id));
         }catch (Exception e){
             log.warn("视频收藏失败{}", e.getMessage());
             throw new BusinessException("视频收藏失败");
@@ -299,6 +302,7 @@ public class VideoServiceImpl implements VideoService {
             videoFavoriteMapper.unFavorite(id, userId);
             cacheHelper.add(RedisKeys.videoFavoriteUpdateFlag(), String.valueOf(id));
             cacheHelper.rem(RedisKeys.videoFavoriteUsers(id),String.valueOf(userId));
+            cacheHelper.delete(RedisKeys.videoDetail(id));
         } catch (Exception e) {
             log.warn("视频取消收藏失败{}", e.getMessage());
             throw new BusinessException("视频取消收藏失败");
@@ -339,25 +343,31 @@ public class VideoServiceImpl implements VideoService {
         } else{
             String likedKey = RedisKeys.videoLikeUsers(video.getId());
             Integer liked = cacheHelper.isMember(likedKey, String.valueOf(userId));
-            if(liked == null){
-                if (video.getLikeCount() != null && video.getLikeCount() == 0)
+            if(liked == null || liked == 0){
+                /*if (video.getLikeCount() != null && video.getLikeCount() == 0)
                     liked = 0;
                 else {
                     liked = videoLikeMapper.isLiked(video.getId(), userId);
                     if (liked != null && liked == 1)
                         cacheHelper.add(likedKey,String.valueOf(userId));
-                }
+                }*/
+                liked = videoLikeMapper.isLiked(video.getId(), userId);
+                if (liked != null && liked == 1)
+                    cacheHelper.add(likedKey,String.valueOf(userId));
             }
             String favoritedKey = RedisKeys.videoFavoriteUsers(video.getId());
             Integer favorited = cacheHelper.isMember(favoritedKey, String.valueOf(userId));
-            if(favorited == null){
-                if (video.getFavoriteCount() != null && video.getFavoriteCount() == 0)
+            if(favorited == null || favorited == 0){
+                /*if (video.getFavoriteCount() != null && video.getFavoriteCount() == 0)
                     favorited = 0;
                 else {
                     favorited = videoFavoriteMapper.isFavorited(video.getId(), userId);
                     if (favorited != null && favorited == 1)
                         cacheHelper.add(favoritedKey,String.valueOf(userId));
-                }
+                }*/
+                favorited = videoFavoriteMapper.isFavorited(video.getId(), userId);
+                if (favorited != null && favorited == 1)
+                    cacheHelper.add(favoritedKey,String.valueOf(userId));
             }
             vo.setLiked(liked == null ? 0 : liked );
             vo.setFavorited(favorited == null ? 0 : favorited );

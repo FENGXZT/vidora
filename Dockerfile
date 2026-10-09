@@ -1,5 +1,10 @@
-# syntax=docker/dockerfile:1.6
-# ↑ 必须在第一行：启用 BuildKit 的 --mount=type=cache（依赖层缓存）。Docker 23+ 默认就是 BuildKit。
+# ★ 说明：这里原本是 `# syntax=docker/dockerfile:1.6`（钉住 BuildKit 的 frontend 版本），
+#   已删除。原因：那行会让 BuildKit 去 Docker Hub 拉取 frontend 镜像
+#   （docker.io/docker/dockerfile:1.6）。国内网络下 registry-1.docker.io 经常超时，
+#   构建会在"还没开始"的阶段就失败：
+#     failed to resolve source metadata for docker.io/docker/dockerfile:1.6
+#   现代 Docker（23+）【内置】的 frontend 已原生支持 RUN --mount=type=cache，
+#   那行只是"钉版本"，删掉不影响任何功能。
 
 # ============================================================
 # 阶段 1：构建（大：JDK + Maven + 源码 + 依赖，但只存在于构建机）
@@ -57,4 +62,3 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=5 \
 
 # exec 形式：让 java 成为 PID 1，才能收到 SIGTERM → 优雅停机才会发生
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -Djava.io.tmpdir=/app/tmp -jar /app/app.jar"]
-```

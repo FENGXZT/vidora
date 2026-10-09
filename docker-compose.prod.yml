@@ -1,6 +1,13 @@
 # ============================================================
-#  /opt/vidora/docker-compose.yml
-#  启动：cd /opt/vidora && docker compose --env-file .env.prod up -d
+#  /opt/vidora/docker-compose.prod.yml      ← ★ 服务器上就用这个名字
+#                                            （backup.sh 里硬编码了它）
+#  启动：cd /opt/vidora
+#        docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+#
+#  ⚠️ 仓库根目录的 docker-compose.yml 与本文件内容必须保持一致；
+#     改完 prod 后请同步一次：
+#       Copy-Item .\docker-compose.prod.yml .\docker-compose.yml -Force   (PowerShell)
+#       cp docker-compose.prod.yml docker-compose.yml                     (Linux)
 # ============================================================
 name: vidora        # 固定项目名 → 卷名/网络名可预测（vidora-mysql-data / vidora-net）
 
@@ -90,6 +97,11 @@ services:
   # MinIO（★ 镜像在 quay.io！Docker Hub 上没有）
   # ------------------------------------------------------------
   minio:
+    # ★ MinIO 镜像说明（实测结论，2026-10）：
+    #   · quay.io/minio/minio        （社区版 AGPL）   → 已【不允许匿名拉取】，返回 401
+    #   · quay.io/minio/aistor/minio （商业版 AIStor） → 能拉，但未授权时【无法建桶】：
+    #         "Access denied. No license is installed."
+    #   ⇒ 结论：用【社区版】镜像 quay.io/minio/minio，靠 docker save / load 从本地传输，不走 registry
     image: quay.io/minio/minio:latest       # 首次跑通后请固定 tag，见 §6.3
     container_name: vidora-minio
     restart: unless-stopped
@@ -170,7 +182,7 @@ services:
       - "80:80"
       - "443:443"
       # ★ 只有【方案 B：没有域名，用 http://公网IP:9000 访问预签名 URL】时才打开这一行
-      # - "9000:9000"
+      - "9000:9000"
     environment:
       TZ: Asia/Shanghai
     volumes:

@@ -1,0 +1,256 @@
+# ============================================================
+#  docker-compose.small.yml
+#  ★ 2核2G 小机器【专用】配置（免费试用机 / 最低配机器）
+#  ★ 长期配置请看 docker-compose.prod.yml（4核8G 用）
+#
+#  启动（服务器上）：
+#    cd /opt/vidora
+#    docker compose --env-file .env.prod -f docker-compose.small.yml up -d
+#
+#  ⚠️ 本文件与 docker-compose.prod.yml 是【两套独立配置】，不是补丁。
+#     结构完全一致，只有"内存限制 / MySQL参数 / 日志轮转"这几处不同。
+#     升级到 4核8G 后：改用 docker-compose.prod.yml，本文件可删。
+#
+#  ------------------------------------------------------------
+#  为什么必须改：按 prod 配置，5 个容器的内存限制合计 5.64GB，
+#  而机器只有 2GB —— 必然触发 OOM Killer。
+#
+#  改动对照表：
+#    服务      prod 限制 → small 限制    关键参数变化
+#    ------    ---------  -----------    --------------------------------
+#    mysql        2g    →   600m         buffer-pool 1G→128M
+#                                        ★ performance-schema=OFF
+#                                        max-connections 200→50
+#    redis       512m   →   160m         maxmemory 400mb→96mb
+#    minio        1g    →   300m         GOMEMLIMIT 800MiB→256MiB
+#    app          2g    →   700m         MaxRAMPercentage 65→60
+#    nginx       128m   →    64m         —
+#    ------    ---------  -----------
+#    合计        5.64g  →  1.82g（+ 宿主机/守护进程约 0.35g）
+#
+#  ⚠️ 即便如此仍然是"极限压榨"：**务必给宿主机加 2GB swap**，
+#     并且接受偶发卡顿。详细注意事项见 44- 文档。
+# ============================================================
+name: vidora
+
+# 日志轮转调紧：小磁盘（40GB）下 20m×5 太奢侈
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ------------------------------------------------------------
+  # MySQL 8（★ 本文件里改动最大的服务）
+  # ------------------------------------------------------------
+  mysql:
+    image: mysql:8.0.41
+    container_name: vidora-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --default-time-zone=+08:00
+      # ★ 1G → 128M：演示数据量只有几千行，128M 的 buffer pool 绰绰有余，
+      #   而 1G 会直接吃掉这台机器一半的物理内存
+      - --innodb-buffer-pool-size=128M
+      - --innodb-log-buffer-size=8M
+      # ★ performance_schema 默认开启会常驻 100~200MB，演示环境完全用不到
+      - --performance-schema=OFF
+      # ★ 每个连接都要占内存，200 个连接在小机器上是灾难
+      - --max-connections=50
+      - --table-open-cache=64
+      - --slow-query-log=1
+      - --long-query-time=1
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: vidora
+      MYSQL_USER: vidora
+      MYSQL_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      # ★ 只绑 127.0.0.1：公网连不上（和 prod 一致，不要改）
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 600m
+    logging: *default-logging
+    networks: [vidora-net]
+
+  # ------------------------------------------------------------
+  # Redis 7
+  # ------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: vidora-redis
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_PASSWORD: ${SPRING_DATA_REDIS_PASSWORD}
+    command: >
+      sh -c 'exec redis-server
+      --requirepass "$$REDIS_PASSWORD"
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 96mb
+      --maxmemory-policy volatile-lru'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 160m
+    logging: *default-logging
+    networks: [vidora-net]
+
+  # ------------------------------------------------------------
+  # MinIO（★ 注意本项目的 MinIO 集合【没有 TTL】，
+  #        volatile-lru 驱逐不掉它们，所以 maxmemory 别设太小）
+  # ------------------------------------------------------------
+  minio:
+    # ★ MinIO 镜像说明（实测结论，2026-10）：
+    #   · quay.io/minio/minio        （社区版 AGPL）   → 已【不允许匿名拉取】，返回 401
+    #   · quay.io/minio/aistor/minio （商业版 AIStor） → 能拉，但未授权时【无法建桶】：
+    #         "Access denied. No license is installed."
+    #   ⇒ 结论：用【社区版】镜像 quay.io/minio/minio，靠 docker save / load 从本地传输，不走 registry
+    image: quay.io/minio/minio:latest
+    container_name: vidora-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      TZ: Asia/Shanghai
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_SERVER_URL: ${MINIO_PUBLIC_ENDPOINT}
+      GOMEMLIMIT: 256MiB
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 300m
+    logging: *default-logging
+    networks: [vidora-net]
+
+  # ------------------------------------------------------------
+  # 应用（Spring Boot）
+  # ------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vidora-server:${APP_TAG:-0.1.0}
+    container_name: vidora-app
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/vidora?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      MINIO_ENDPOINT: http://minio:9000
+      TZ: Asia/Shanghai
+      # ★ 覆盖 .env.prod 里的 JAVA_OPTS（65% → 60%）
+      #   environment 的优先级高于 env_file，所以这里写就生效，
+      #   不用去改 .env.prod（那是密钥文件，尽量别动）
+      JAVA_OPTS: "-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs"
+    volumes:
+      - ./logs:/app/logs
+      - ./tmp:/app/tmp
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    stop_grace_period: 40s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/liveness"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # ★ 小机器上 JVM 冷启动更慢，给足时间（prod 是 120s）
+      start_period: 180s
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+    logging: *default-logging
+    networks: [vidora-net]
+
+  # ------------------------------------------------------------
+  # Nginx（唯一对外暴露端口的容器）
+  # ------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: vidora-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # ★ 方案 B 必需：预签名 URL 的入口（公网 IP:9000）
+      - "9000:9000"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./web:/usr/share/nginx/html:ro
+      - nginx-cache:/var/cache/nginx
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    logging: *default-logging
+    networks: [vidora-net]
+
+# ------------------------------------------------------------
+# 网络 / 数据卷（与 prod 完全一致，名字不能改）
+# ------------------------------------------------------------
+networks:
+  vidora-net:
+    name: vidora-net
+    driver: bridge
+
+volumes:
+  mysql-data:
+    name: vidora-mysql-data
+  redis-data:
+    name: vidora-redis-data
+  minio-data:
+    name: vidora-minio-data
+  nginx-cache:
+    name: vidora-nginx-cache

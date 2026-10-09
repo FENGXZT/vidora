@@ -107,6 +107,6 @@ logging:
     com.fxzt.vidora: INFO                 # 自己的代码
     com.fxzt.vidora.mapper: INFO           # MyBatis SQL 日志
     org.springframework: WARN               # Spring 只记警告
-    org.apache.ibatis: DEBUG                # MyBatis 内部日志
+    org.apache.ibatis: WARN                # MyBatis 内部日志
     io.lettuce: WARN                        # Redis 客户端只记警告
     com.zaxxer.hikari: WARN

@@ -401,6 +401,8 @@ public class FileServiceImpl implements FileService {
         videoFavoriteMapper.deleteByVideoId(id);
         videoLikeMapper.deleteByVideoId(id);
         cacheHelper.delete(RedisKeys.uploadContext(video.getUploadId()));
+        cacheHelper.delete(RedisKeys.videoLikeUsers(id));
+        cacheHelper.delete(RedisKeys.videoFavoriteUsers(id));
     }
 
     /**
